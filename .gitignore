@@ -55,18 +55,18 @@ dkms.conf
 .metadata/
 RemoteSystemsTempFiles/.project
 .settings/
-wifi_manager/build/
-wifi_manager/build/*
-wifi_manager/build/app_update/
-wifi_manager/build/aws_iot/
+nixie_clock_code/build/
+nixie_clock_code/build/*
+nixie_clock_code/build/app_update/
+nixie_clock_code/build/aws_iot/
 *.a
 *.o
 *.d
-wifi_manager/.cproject
-wifi_manager/.project
-wifi_manager/sdkconfig*
+nixie_clock_code/.cproject
+nixie_clock_code/.project
+nixie_clock_code/sdkconfig*
 
 #doxygen
 Doxyfile
-wifi_manager/doc/
+nixie_clock_code/doc/
 
