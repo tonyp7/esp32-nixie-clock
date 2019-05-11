@@ -3,7 +3,7 @@
 # project subdirectory.
 #
 
-PROJECT_NAME := wifi_manager
+PROJECT_NAME := nixie_clock_code
 
 include $(IDF_PATH)/make/project.mk
 
