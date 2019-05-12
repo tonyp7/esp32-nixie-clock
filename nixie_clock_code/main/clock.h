@@ -17,7 +17,7 @@
 #define GPIO_INPUT_IO_4 				4
 #define ESP_INTR_FLAG_DEFAULT 			0
 
-
+void clock_tick();
 void clock_task(void *pvParameter);
 
 #endif /* MAIN_CLOCK_H_ */

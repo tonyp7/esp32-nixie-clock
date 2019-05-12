@@ -61,10 +61,23 @@ static void IRAM_ATTR gpio_isr_handler(void* arg){
 }
 
 
+void clock_tick(){
+	/* +1 second */
+	clock_time_tm->tm_sec = clock_time_tm->tm_sec + 1;
+	clock_time = mktime(clock_time_tm);
+	clock_time_tm = localtime(&clock_time);
+}
+
 /**
  * @brief this is the main RTOS task that controls everything in the clock
  */
 void clock_task(void *pvParameter){
+
+
+	/* time variables */
+	clock_time = time(NULL);
+	clock_time_tm = localtime(&clock_time);
+	clock_time = mktime(clock_time_tm);
 
 	/* initialized I2C */
 	ESP_ERROR_CHECK(i2c_master_init());
@@ -94,8 +107,10 @@ void clock_task(void *pvParameter){
 	uint32_t io_num;
 	for(;;) {
 		if(xQueueReceive(clock_queue, &io_num, portMAX_DELAY)) {
-			//printf("GPIO[%d] intr, val: %d\n", io_num, gpio_get_level(io_num));
-			ESP_LOGE(TAG, "tick");
+
+			clock_tick();
+			ESP_LOGE(TAG, "The current date/time is: %s", asctime (clock_time_tm));
+
 		}
 	}
 
