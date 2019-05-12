@@ -47,10 +47,12 @@ SOFTWARE.
 #include "lwip/err.h"
 #include "lwip/netdb.h"
 
-#include "http_server.h"
+
 #include "wifi_manager.h"
 
-
+#include "clock.h"
+#include "i2c.h"
+#include "ds3231.h"
 
 
 
@@ -69,15 +71,20 @@ void monitoring_task(void *pvParameter)
 	}
 }
 
+void ds3231_test(void *pvParameter){
+	if(i2c_master_init() == ESP_OK){
+
+	}
+}
+
 
 void app_main()
 {
 
-
-
-
 	/* start the wifi manager */
 	wifi_manager_start();
+
+	xTaskCreate(&clock_task, "clock_task", 2048, NULL, CLOCK_TASK_PRIORITY, NULL);
 
 	/* your code should go here. Here we simply create a task on core 2 that monitors free heap memory */
 	xTaskCreatePinnedToCore(&monitoring_task, "monitoring_task", 2048, NULL, 1, NULL, 1);
