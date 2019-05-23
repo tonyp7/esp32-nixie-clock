@@ -67,7 +67,7 @@ void monitoring_task(void *pvParameter)
 {
 	for(;;){
 		ESP_LOGI(TAG, "free heap: %d",esp_get_free_heap_size());
-		vTaskDelay( pdMS_TO_TICKS(10000) );
+		vTaskDelay( pdMS_TO_TICKS(30000) );
 	}
 }
 
@@ -84,7 +84,11 @@ void app_main()
 	/* start the wifi manager */
 	wifi_manager_start();
 
-	xTaskCreate(&clock_task, "clock_task", 2048, NULL, CLOCK_TASK_PRIORITY, NULL);
+	/* register cb for internet connectivity */
+	wifi_manager_set_callback(EVENT_STA_GOT_IP, &clock_notify_sta_got_ip);
+
+	/* clock */
+	xTaskCreate(&clock_task, "clock_task", 6048, NULL, CLOCK_TASK_PRIORITY, NULL);
 
 	/* your code should go here. Here we simply create a task on core 2 that monitors free heap memory */
 	xTaskCreatePinnedToCore(&monitoring_task, "monitoring_task", 2048, NULL, 1, NULL, 1);
