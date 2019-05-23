@@ -42,6 +42,7 @@ SOFTWARE.
 #define DS3231_DATE_REGISTER				0x04
 #define DS3231_MONTH_REGISTER				0x05
 #define DS3231_YEAR_REGISTER				0x06
+#define DS3231_TIME_REGISTERS_COUNT			7			/* 7 registers from 0x00 to 0x06 */
 
 #define DS3231_CONTROL_REGISTER				0x0E
 #define DS3231_CONTROL_STATUS_REGISTER		0x0F
@@ -60,8 +61,10 @@ void ds3231_i2c_init();
 int ds3231_gettimeofday();
 void ds3231_set_datetime(time_t datetime);
 
-uint8_t ds3231_dec2bcd(uint8_t i);
-uint8_t ds3231_bcd2dec(uint8_t i);
+esp_err_t ds3231_get_time(struct tm *timeinfo);
+esp_err_t ds3231_set_time(const struct tm *timeinfo);
+uint8_t ds3231_bcd2dec (uint8_t val);
+uint8_t ds3231_dec2bcd (uint8_t val);
 
 
 #endif /* MAIN_DS3231_H_ */

@@ -47,6 +47,8 @@ SOFTWARE.
 static const char TAG[] = "ds3231";
 
 
+uint8_t ds3231_time_registers_values[DS3231_TIME_REGISTERS_COUNT];
+
 /* @brief configures the ds3231 to output a square wave on its INT/SQW pin
  *
  * Default CONTROL_REGISTER (0x0E) values
@@ -131,6 +133,54 @@ void ds3231_i2c_init(){
 }
 
 
+esp_err_t ds3231_set_time(const struct tm *timeinfo){
+
+
+
+	ds3231_time_registers_values[DS3231_SECONDS_REGISTER] = ds3231_dec2bcd(timeinfo->tm_sec);
+	ds3231_time_registers_values[DS3231_MINUTES_REGISTER] = ds3231_dec2bcd(timeinfo->tm_min);
+	ds3231_time_registers_values[DS3231_HOURS_REGISTER] = ds3231_dec2bcd(timeinfo->tm_hour);
+	ds3231_time_registers_values[DS3231_DAY_REGISTER] = timeinfo->tm_wday + 1; /* day is 1-7 in the ds3231, 0-6 in the time struct. Hence +1. 0=Sunday*/
+	ds3231_time_registers_values[DS3231_DATE_REGISTER] = ds3231_dec2bcd(timeinfo->tm_mday);
+	ds3231_time_registers_values[DS3231_MONTH_REGISTER] = ds3231_dec2bcd(timeinfo->tm_mon + 1); /* month is 1-12 in the ds3231, 0-11 in the time struct. Hence +1 */
+
+	if(timeinfo->tm_year >= 100){
+		ds3231_time_registers_values[DS3231_YEAR_REGISTER] = ds3231_dec2bcd(timeinfo->tm_year - 100);
+		ds3231_time_registers_values[DS3231_MONTH_REGISTER] |= 0x80; /* set century bit => 2000s */
+	}
+	else{
+		ds3231_time_registers_values[DS3231_YEAR_REGISTER] = ds3231_dec2bcd(timeinfo->tm_year);
+	}
+
+	esp_err_t ret = i2c_write_bytes(DS3231_ADDR, DS3231_SECONDS_REGISTER, ds3231_time_registers_values, DS3231_TIME_REGISTERS_COUNT);
+
+	return ret;
+}
+
+esp_err_t ds3231_get_time(struct tm *timeinfo){
+
+	esp_err_t ret = i2c_read_bytes(DS3231_ADDR, DS3231_SECONDS_REGISTER, ds3231_time_registers_values,DS3231_TIME_REGISTERS_COUNT);
+
+	if(ret == ESP_OK){
+
+		timeinfo->tm_sec = ds3231_bcd2dec(ds3231_time_registers_values[DS3231_SECONDS_REGISTER]);
+		timeinfo->tm_min = ds3231_bcd2dec(ds3231_time_registers_values[DS3231_MINUTES_REGISTER]);
+		timeinfo->tm_hour = ds3231_bcd2dec(ds3231_time_registers_values[DS3231_HOURS_REGISTER]);
+		timeinfo->tm_wday = ds3231_time_registers_values[DS3231_DAY_REGISTER] - 1; /* day of the week, called DAY register in the DS3231 ranges from 1 to 7. WDAY is 0-6 format. 0=Sunday */
+		timeinfo->tm_mday = ds3231_bcd2dec(ds3231_time_registers_values[DS3231_DATE_REGISTER]); /*day of the month 1-31, called the DATE register in the DS3231*/
+		timeinfo->tm_mon = ds3231_bcd2dec(0x1f & ds3231_time_registers_values[DS3231_MONTH_REGISTER]) - 1; /* month is 1-12 in the ds3231, 0-11 in the time struct. Hence -1. 0x1f mask is to remove century information */
+		timeinfo->tm_year = ds3231_bcd2dec(ds3231_time_registers_values[DS3231_YEAR_REGISTER]); /* year is 0-99, struct is from 1900 so 0 or 100 is added depending on century bit */
+		timeinfo->tm_year += (0x80 & ds3231_time_registers_values[DS3231_MONTH_REGISTER])?100:0; /* century bit means we are in the 2000s*/
+		timeinfo->tm_isdst = 0;
+
+		printf("year:%d - month:%d - day:%d [wday:%d] - %d:%d:%d", timeinfo->tm_year, timeinfo->tm_mon, timeinfo->tm_mday, timeinfo->tm_wday, timeinfo->tm_hour, timeinfo->tm_min, timeinfo->tm_sec);
+	}
+
+	return ret;
+
+}
+
+
 
 
 void ds3231_task(void *pvParameter){
@@ -172,9 +222,8 @@ void ds3231_task(void *pvParameter){
 }
 
 
-uint8_t ds3231_dec2bcd(uint8_t i){
-	 return i + 6 * (i / 10);
-}
-uint8_t ds3231_bcd2dec(uint8_t i){
-	return i - 6 * (i >> 4);
-}
+
+uint8_t ds3231_bcd2dec (uint8_t val) { return val - 6 * (val >> 4); }
+uint8_t ds3231_dec2bcd (uint8_t val) { return val + 6 * (val / 10); }
+
+
