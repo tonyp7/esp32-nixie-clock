@@ -28,6 +28,8 @@ Contains wrappers around the esp http client for the mclk.org time API.
 #ifndef MAIN_INCLUDE_HTTP_CLIENT_H_
 #define MAIN_INCLUDE_HTTP_CLIENT_H_
 
+#define HTTP_CLIENT_MAX_REQUEST_SIZE	256
+
 void http_client_init();
 void http_client_cleanup(esp_http_client_handle_t client);
 bool http_client_lock(TickType_t xTicksToWait);

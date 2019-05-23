@@ -36,13 +36,15 @@ Contains wrappers around the esp http client for the mclk.org time API.
 #include "esp_log.h"
 #include "esp_system.h"
 #include "esp_http_client.h"
+#include "cJSON.h"
 
-#include "cjson/cJSON.h"
+#include "clock.h"
 #include "http_client.h"
 
 
 
 static const char TAG[] = "HTTP_CLIENT";
+static const char *HTTP_CLIENT_TIME_API_URL = "https://api.mclk.org/time";
 
 
 /** @brief for the sake of simplicity you can only do one HTTP request at a time; strictly enforced by this mutex */
@@ -73,6 +75,18 @@ void http_client_unlock(){
 }
 
 
+void http_client_process_data(esp_http_client_event_t *evt){
+	if(evt->user_data == (void*)HTTP_CLIENT_TIME_API_URL){
+		/* process json answer */
+
+		if(evt->data_len){
+			cJSON *json = cJSON_Parse((char*)evt->data);
+			clock_notify_time_api_response(json);
+		}
+		//printf("%.*s", evt->data_len, (char*)evt->data);
+	}
+}
+
 esp_err_t _http_event_handler(esp_http_client_event_t *evt){
     switch(evt->event_id) {
         case HTTP_EVENT_ERROR:
@@ -85,15 +99,11 @@ esp_err_t _http_event_handler(esp_http_client_event_t *evt){
             ESP_LOGI(TAG, "HTTP_EVENT_HEADER_SENT");
             break;
         case HTTP_EVENT_ON_HEADER:
-            ESP_LOGI(TAG, "HTTP_EVENT_ON_HEADER, key=%s, value=%s", evt->header_key, evt->header_value);
+            ESP_LOGD(TAG, "HTTP_EVENT_ON_HEADER, key=%s, value=%s", evt->header_key, evt->header_value);
             break;
         case HTTP_EVENT_ON_DATA:
             ESP_LOGI(TAG, "HTTP_EVENT_ON_DATA, len=%d", evt->data_len);
-            if (!esp_http_client_is_chunked_response(evt->client)) {
-                // Write out data
-                printf("%.*s", evt->data_len, (char*)evt->data);
-            }
-
+            http_client_process_data(evt);
             break;
         case HTTP_EVENT_ON_FINISH:
             ESP_LOGI(TAG, "HTTP_EVENT_ON_FINISH");
@@ -154,75 +164,45 @@ void http_client_get_api_time(char* timezone){
 
 
 	if(http_client_lock( pdMS_TO_TICKS(5000) )){
-		 ESP_LOGI(TAG, "mutex ok");
-
-		if(timezone != NULL){
-			cJSON *tz = NULL;
-
-			/* generate the request body */
-			http_client_body = cJSON_CreateObject();
-			tz = cJSON_CreateString(timezone);
-			cJSON_AddItemToObject(http_client_body, "timezone", tz);
-			http_client_body_str = cJSON_Print(http_client_body);
-		}
 
 
 		esp_http_client_config_t config = {
-				.url = "https://api.mclk.org/time",
-		        .event_handler = _http_event_handler,
+				.url = HTTP_CLIENT_TIME_API_URL,
+				.event_handler = _http_event_handler,
 				.is_async = true,
 				.timeout_ms = 10000,
+				.user_data = (void*)HTTP_CLIENT_TIME_API_URL
 		};
 		esp_http_client_handle_t client = esp_http_client_init(&config);
+
+
+		if(timezone != NULL){
+			cJSON *body = NULL;
+			cJSON *tz = NULL;
+			char* body_str = NULL;
+			char buff[HTTP_CLIENT_MAX_REQUEST_SIZE];
+
+			/* generate the request body */
+			body = cJSON_CreateObject();
+			tz = cJSON_CreateString(timezone);
+			cJSON_AddItemToObject(body, "timezone", tz);
+			body_str = cJSON_Print(body);
+			strcpy(buff, body_str);
+
+			cJSON_Delete(body);
+			free(body_str);
+			esp_http_client_set_post_field(client, buff, strlen(buff));
+		}
+
 
 
 		xTaskCreate(&http_client_task, "http_client_task", 4096, (void*)client, 1, NULL);
 
 	}
+	else{
+		 ESP_LOGE(TAG, "Failed to acquire HTTP client mutex");
+	}
 
 }
 
-
-void http_rest()
-{
-    esp_http_client_config_t config = {
-        //.url = "http://httpbin.org/get",
-		.url = "https://api.mclk.org/time",
-        .event_handler = _http_event_handler,
-		.is_async = true,
-		.timeout_ms = 10000,
-    };
-    esp_http_client_handle_t client = esp_http_client_init(&config);
-    //esp_http_client_set_post_field(client, post_data, strlen(post_data));
-
-
-    esp_err_t err;
-    while (1) {
-            err = esp_http_client_perform(client);
-            if (err != ESP_ERR_HTTP_EAGAIN) {
-                break;
-            }
-        }
-        if (err == ESP_OK) {
-            ESP_LOGI(TAG, "HTTPS Status = %d, content_length = %d",
-                    esp_http_client_get_status_code(client),
-                    esp_http_client_get_content_length(client));
-        } else {
-            ESP_LOGE(TAG, "Error perform http request %s", esp_err_to_name(err));
-        }
-
-
-    // GET
-        /*
-    esp_err_t err = esp_http_client_perform(client);
-    if (err == ESP_OK) {
-        ESP_LOGI(TAG, "HTTP GET Status = %d, content_length = %d",
-                esp_http_client_get_status_code(client),
-                esp_http_client_get_content_length(client));
-    } else {
-        ESP_LOGE(TAG, "HTTP GET request failed: %s", esp_err_to_name(err));
-    }*/
-
-    esp_http_client_cleanup(client);
-}
 
