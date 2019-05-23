@@ -31,7 +31,9 @@ SOFTWARE.
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <time.h>
+#include <math.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
@@ -44,15 +46,17 @@ SOFTWARE.
 #include "lwip/err.h"
 #include "lwip/apps/sntp.h"
 #include "esp_http_client.h"
+#include "cJSON.h"
 
 #include "clock.h"
 #include "ds3231.h"
 #include "i2c.h"
 #include "http_client.h"
-#include "cjson/cJSON.h"
+
 
 
 #define CLOCK_SQW_INTERRUPT_GPIO
+
 
 
 /* @brief tag used for ESP serial console messages */
@@ -68,25 +72,36 @@ time_t timestamp_utc;
 time_t timestamp_local;
 struct tm *clock_time_tm_ptr; /*used for localtime function which returns a static pointer */
 struct tm clock_time_tm;
-timezone_t timezone;
+static timezone_t clock_timezone;
 
 static QueueHandle_t clock_queue = NULL;
-
+static bool time_set = false;
 
 
 void clock_notify_sta_got_ip(void* pvArgument){
 	if(clock_queue){
-		uint32_t message = CLOCK_MESSAGE_STA_GOT_IP;
-		xQueueSend(clock_queue, (void*)&message, portMAX_DELAY);
+		clock_queue_message_t msg;
+		msg.message = CLOCK_MESSAGE_STA_GOT_IP;
+		xQueueSend(clock_queue, &msg, portMAX_DELAY);
 		//xQueueSendFromISR(clock_queue, &message, NULL);
 	}
 }
 void clock_notify_sta_disconnected(){
 	if(clock_queue){
-		xQueueSend(clock_queue, (void*)CLOCK_MESSAGE_STA_DISCONNECTED, portMAX_DELAY);
+		clock_queue_message_t msg;
+		msg.message = CLOCK_MESSAGE_STA_DISCONNECTED;
+		xQueueSend(clock_queue, &msg, portMAX_DELAY);
 	}
 }
 
+void clock_notify_time_api_response(cJSON *json){
+	if(clock_queue){
+		clock_queue_message_t msg;
+		msg.message = CLOCK_MESSAGE_RECEIVE_TIME_API;
+		msg.param = (void*)json;
+		xQueueSend(clock_queue, &msg, portMAX_DELAY);
+	}
+}
 
 
 void clock_change_timezone(timezone_t tz){
@@ -94,40 +109,14 @@ void clock_change_timezone(timezone_t tz){
 }
 
 
-static void initialize_sntp(void){
-    ESP_LOGI(TAG, "Initializing SNTP");
-    sntp_setoperatingmode(SNTP_OPMODE_POLL);
-    sntp_setservername(0, CLOCK_SNTP_SERVER);
-    sntp_init();
-}
-
-
-
-static void obtain_time(void){
-    initialize_sntp();
-
-    // wait for time to be set
-    time_t now = 0;
-    struct tm timeinfo = { 0 };
-    int retry = 0;
-    const int retry_count = 10;
-    while(timeinfo.tm_year < (2016 - 1900) && ++retry < retry_count) {
-        ESP_LOGI(TAG, "Waiting for system time to be set... (%d/%d)", retry, retry_count);
-        vTaskDelay(2000 / portTICK_PERIOD_MS);
-        time(&now);
-        localtime_r(&now, &timeinfo);
-    }
-
-}
-
-
-
-
 
 static void IRAM_ATTR gpio_isr_handler(void* arg){
     //uint32_t gpio_num = (uint32_t) arg;
-    uint32_t message = CLOCK_MESSAGE_TICK;
-    xQueueSendFromISR(clock_queue, &message, NULL);
+
+	clock_queue_message_t msg;
+	msg.message = CLOCK_MESSAGE_TICK;
+
+    xQueueSendFromISR(clock_queue, &msg, NULL);
 	return;
 
 }
@@ -135,13 +124,28 @@ static void IRAM_ATTR gpio_isr_handler(void* arg){
 
 void clock_tick(){
 	/* +1 second */
-	timestamp_local = ++timestamp_utc + timezone.offset;
+	timestamp_local = ++timestamp_utc + clock_timezone.offset;
 	clock_time_tm_ptr = localtime(&timestamp_local);
 }
 
 
 
+bool clock_realign(time_t new_t){
 
+	double d = fabs(difftime(timestamp_utc, new_t));
+	if(d > CLOCK_MAX_ACCEPTABLE_TIME_DRIFT){
+		ESP_LOGI(TAG, "Re-alignment of the clock");
+		timestamp_utc = new_t;
+
+		/* set time on RTC */
+		ESP_ERROR_CHECK(ds3231_set_time(localtime(&timestamp_utc)));
+
+		return true;
+	}
+
+	return false;
+
+}
 
 
 void clock_register_sqw_interrupt(){
@@ -212,7 +216,7 @@ void clock_task(void *pvParameter){
 	char strftime_buf[64];
 
 	/* register clock queue */
-	clock_queue = xQueueCreate(10, sizeof(uint32_t));
+	clock_queue = xQueueCreate(10, sizeof(clock_queue_message_t));
 
 	/* initialized I2C */
 	ESP_ERROR_CHECK(i2c_master_init());
@@ -228,82 +232,77 @@ void clock_task(void *pvParameter){
 	ESP_ERROR_CHECK(ds3231_get_time(&clock_time_tm));
 	strftime(strftime_buf, sizeof(strftime_buf), "%c", &clock_time_tm);
 	ESP_LOGI(TAG, "The current RTC time is: %s", strftime_buf);
-
-	/* time variables */
-	timestamp_utc = mktime(&clock_time_tm);
+	if(clock_time_tm.tm_year < 71){ /* 1971 */
+		/* time is not available: first run or battery of the RTC was dead */
+		timestamp_utc = 1;
+	}
+	else{
+		/* otherwise: we are good to go! */
+		timestamp_utc = mktime(&clock_time_tm);
+		time_set = true;
+	}
 	clock_time_tm_ptr = localtime(&timestamp_utc);
 
+
 	/* init timezone and attempt to get what was saved in nvs */
-	timezone.offset = 0;
-	strcpy(timezone.name, "UTC");
-	ESP_ERROR_CHECK(clock_get_timezone(&timezone));
-
-	/*
-	const char* json_string = "{\"unixEpoch\":1558439438,\"timeString\":\"Tuesday, 21-May-2019 07:50:38 EDT\",\"timezone\":{\"timezoneString\":\"America\\/New_York\",\"offset\":-14400,\"offsetPretty\":\"UTC-04:00\",\"abbr\":\"EDT\"}}";
-	const cJSON *name = NULL;
-	cJSON *json = cJSON_Parse(json_string);
-	name = cJSON_GetObjectItemCaseSensitive(json, "timeString");
-	if (cJSON_IsString(name) && (name->valuestring != NULL))
-	{
-		printf("Checking monitor \"%s\"\n", name->valuestring);
-	}*/
-
-/*
-	time_t now;
-	struct tm timeinfo;
-	time(&now);
-	localtime_r(&now, &timeinfo);
-	// Is time set? If not, tm_year will be (1970 - 1900).
-	if (timeinfo.tm_year < (2016 - 1900)) {
-		ESP_LOGI(TAG, "Time is not set yet. Connecting to WiFi and getting time over NTP.");
-		obtain_time();
-		// update 'now' variable with current time
-		time(&now);
-	}
-
-	localtime_r(&now, &timeinfo);
-	strftime(strftime_buf, sizeof(strftime_buf), "%c", &timeinfo);
-	ESP_LOGI(TAG, "The current date/time in UTC is: %s", strftime_buf);
-
-
-	ds3231_get_time(&timeinfo);*/
-
-
-
-	//for(;;){
-	//	vTaskDelay( pdMS_TO_TICKS(100));
-	//}
-
-
-
-
-
-
-
-
-
+	clock_timezone.offset = 0;
+	strcpy(clock_timezone.name, "UTC");
+	ESP_ERROR_CHECK(clock_get_timezone(&clock_timezone));
 
 	/* register interrupt on the 1Hz sqw signal coming from the DS3231 */
 	clock_register_sqw_interrupt();
 
 
-
-
-
-	uint32_t msg;
+	clock_queue_message_t msg;
 	for(;;) {
-		if(xQueueReceive(clock_queue, &msg, portMAX_DELAY)) { /* portMAX_DELAY */
+		if(xQueueReceive(clock_queue, &msg, pdMS_TO_TICKS(11100))) { /* portMAX_DELAY */
 
-			switch(msg){
+			switch(msg.message){
 				case CLOCK_MESSAGE_STA_GOT_IP:
-					ESP_LOGE(TAG, "******************************* CONNECTED");
-					//http_rest();
 					http_client_get_api_time("Asia/Singapore");
 					break;
 				case CLOCK_MESSAGE_TICK:
-					clock_tick();
-					strftime(strftime_buf, sizeof(strftime_buf), "%c", clock_time_tm_ptr);
-					ESP_LOGE(TAG, "TICK! date/time is: %s", strftime_buf);
+					if(time_set){
+						clock_tick();
+						strftime(strftime_buf, sizeof(strftime_buf), "%c", clock_time_tm_ptr);
+						ESP_LOGE(TAG, "TICK! date/time is: %s", strftime_buf);
+					}
+					break;
+				case CLOCK_MESSAGE_RECEIVE_TIME_API:
+					;cJSON *json = (cJSON*)msg.param;
+					if(json){
+						char *json_str = cJSON_Print(json);
+						ESP_LOGI(TAG, "%s", json_str);
+
+						/* get time, and set it if necessary */
+						cJSON *unixEpoch = cJSON_GetObjectItemCaseSensitive(json, "unixEpoch");
+						if(cJSON_IsNumber(unixEpoch)){
+							time_t t = unixEpoch->valueint;
+							clock_realign(t);
+							time_set = true;
+						}
+
+						/* check timezone */
+						cJSON *timezone = cJSON_GetObjectItemCaseSensitive(json, "timezone");
+						if(cJSON_IsObject(timezone)){
+							cJSON *timezoneString = cJSON_GetObjectItemCaseSensitive(timezone, "timezoneString");
+							if(cJSON_IsString(timezoneString) && strcmp(clock_timezone.name, timezoneString->valuestring) != 0){
+								/* realign clock_timezone */
+								strcpy(clock_timezone.name, timezoneString->valuestring);
+								ESP_LOGI(TAG, "Timezone set to: %s", clock_timezone.name);
+							}
+
+							cJSON *offset = cJSON_GetObjectItemCaseSensitive(timezone, "offset");
+							if(cJSON_IsNumber(offset) && clock_timezone.offset != offset->valueint){
+								/* realign offset if needed */
+								clock_timezone.offset = offset->valueint;
+								ESP_LOGI(TAG, "Offset set to: %d", clock_timezone.offset);
+							}
+						}
+
+						free(json_str);
+						cJSON_Delete(json);
+					}
 					break;
 				default:
 					break;

@@ -44,8 +44,6 @@ apply offset manually to the timestamp.
  */
 #define CLOCK_TASK_PRIORITY				CONFIG_CLOCK_TASK_PRIORITY
 
-/** @brief SNTP server used to sync time. Default pool.ntp.org */
-#define CLOCK_SNTP_SERVER				"pool.ntp.org"
 
 /**
  * @brief Store the timezone in its readable way, such as "America/New_York"
@@ -55,8 +53,11 @@ apply offset manually to the timestamp.
  * 	America/North_Dakota/New_Salem
  * 40 is rounded up to the nearest 10, to include the \0.
  */
-#define CLOCK_MAX_TZ_STRING_LENGTH		40
+#define CLOCK_MAX_TZ_STRING_LENGTH			40
 
+
+/** in seconds, the maximum drift allowed before we force a refresh of the time */
+#define CLOCK_MAX_ACCEPTABLE_TIME_DRIFT		60.0
 
 
 typedef enum clock_message_t{
@@ -64,8 +65,15 @@ typedef enum clock_message_t{
 	CLOCK_MESSAGE_TICK = 1,
 	CLOCK_MESSAGE_STA_GOT_IP = 2,
 	CLOCK_MESSAGE_STA_DISCONNECTED = 3,
+	CLOCK_MESSAGE_RECEIVE_TIME_API = 4,
 	CLOCK_MESSAGE_MAX = 0x7fffffff
 }clock_message_t;
+
+/** @brief type that is processed by the clock queue */
+typedef struct clock_queue_message_t{
+	clock_message_t message;
+	void *param;
+}clock_queue_message_t;
 
 typedef struct timezone_t{
 	int32_t offset;
@@ -78,12 +86,15 @@ typedef struct timezone_t{
 
 void clock_notify_sta_got_ip(void* pvArgument);
 void clock_notify_sta_disconnected();
+void clock_notify_time_api_response(cJSON *json);
 void clock_tick();
 void clock_task(void *pvParameter);
 void clock_register_sqw_interrupt();
 
 void clock_change_timezone(timezone_t tz);
 esp_err_t clock_get_timezone(timezone_t *tz);
+
+bool clock_realign(time_t new_t);
 
 
 #endif /* MAIN_CLOCK_H_ */
