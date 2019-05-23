@@ -44,7 +44,7 @@ SOFTWARE.
 
 
 /* @brief tag used for ESP serial console messages */
-static const char TAG[] = "ds3231";
+static const char TAG[] = "DS3231";
 
 
 uint8_t ds3231_time_registers_values[DS3231_TIME_REGISTERS_COUNT];
@@ -173,7 +173,7 @@ esp_err_t ds3231_get_time(struct tm *timeinfo){
 		timeinfo->tm_year += (0x80 & ds3231_time_registers_values[DS3231_MONTH_REGISTER])?100:0; /* century bit means we are in the 2000s*/
 		timeinfo->tm_isdst = 0;
 
-		printf("year:%d - month:%d - day:%d [wday:%d] - %d:%d:%d", timeinfo->tm_year, timeinfo->tm_mon, timeinfo->tm_mday, timeinfo->tm_wday, timeinfo->tm_hour, timeinfo->tm_min, timeinfo->tm_sec);
+		ESP_LOGI(TAG, "READ: YEAR:%d MONTH:%d DAY:%d [WDAY:%d] - %d:%d:%d", timeinfo->tm_year, timeinfo->tm_mon, timeinfo->tm_mday, timeinfo->tm_wday, timeinfo->tm_hour, timeinfo->tm_min, timeinfo->tm_sec);
 	}
 
 	return ret;
