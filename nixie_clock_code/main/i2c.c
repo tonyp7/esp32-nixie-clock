@@ -25,6 +25,24 @@ esp_err_t i2c_master_init(){
 }
 
 
+esp_err_t i2c_write_bytes(const uint8_t slave_address, const uint8_t register_address, uint8_t *data, size_t data_len){
+	esp_err_t ret;
+	i2c_cmd_handle_t cmd = i2c_cmd_link_create();
+	i2c_master_start(cmd);
+	i2c_master_write_byte(cmd, slave_address << 1 | WRITE_BIT, ACK_CHECK_EN);
+	i2c_master_write_byte(cmd, register_address, ACK_CHECK_EN);
+
+	for(int i=0; i<data_len; i++){
+		i2c_master_write_byte(cmd, data[i], ACK_CHECK_EN);
+	}
+
+	i2c_master_stop(cmd);
+	ret = i2c_master_cmd_begin(I2C_MASTER_NUM, cmd, pdMS_TO_TICKS( 1000 ) );
+	i2c_cmd_link_delete(cmd);
+	return ret;
+}
+
+
 esp_err_t i2c_read_bytes(const uint8_t slave_address, const uint8_t register_address, uint8_t *data, size_t data_len){
 
 	/* I don't know why you'd ever call read_bytes with only one byte to read but this is an edge case we can easily handle

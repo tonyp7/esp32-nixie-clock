@@ -52,4 +52,7 @@ esp_err_t i2c_read_byte(const uint8_t slave_address, const uint8_t register_addr
  */
 esp_err_t i2c_read_bytes(const uint8_t slave_address, const uint8_t register_address, uint8_t *data, size_t data_len);
 
+
+esp_err_t i2c_write_bytes(const uint8_t slave_address, const uint8_t register_address, uint8_t *data, size_t data_len);
+
 #endif /* MAIN_I2C_H_ */
