@@ -65,8 +65,11 @@ static const char TAG[] = "clock";
 /* @brief flash memory namespace for the clock */
 const char clock_nvs_namespace[] = "clock";
 
+/* @brief storage for timestamp transitions */
+static transition_t transitions[CLOCK_MAX_TRANSITIONS];
 
-//char clock_tz_string[CLOCK_MAX_TZ_STRING_LENGTH];
+/* @brief mutex to prevent several read/write to nvs at the same time */
+static SemaphoreHandle_t clock_nvs_mutex = NULL;
 
 time_t timestamp_utc;
 time_t timestamp_local;
@@ -104,9 +107,21 @@ void clock_notify_time_api_response(cJSON *json){
 }
 
 
+void clock_notify_transitions_api_response(cJSON *json){
+	if(clock_queue){
+		clock_queue_message_t msg;
+		msg.message = CLOCK_MESSAGE_RECEIVE_TRANSITIONS_API;
+		msg.param = (void*)json;
+		xQueueSend(clock_queue, &msg, portMAX_DELAY);
+	}
+}
+
+
 void clock_change_timezone(timezone_t tz){
 
 }
+
+
 
 
 
@@ -205,15 +220,77 @@ esp_err_t clock_get_timezone(timezone_t *tz){
 
 }
 
+
+
+void clock_save_timezone_task(void *pvParameter){
+	if(clock_nvs_lock( pdMS_TO_TICKS( 10000 ) )){
+		clock_save_timezone(&clock_timezone);
+		clock_nvs_unlock();
+	}
+
+	vTaskDelete( NULL );
+}
+
+
+bool clock_nvs_lock(TickType_t xTicksToWait){
+	if(clock_nvs_mutex){
+		if( xSemaphoreTake( clock_nvs_mutex, xTicksToWait ) == pdTRUE ) {
+			return true;
+		}
+		else{
+			return false;
+		}
+	}
+	else{
+		return false;
+	}
+
+}
+void clock_nvs_unlock(){
+	xSemaphoreGive( clock_nvs_mutex );
+}
+
+esp_err_t clock_save_timezone(timezone_t *tz){
+	nvs_handle handle;
+	esp_err_t esp_err;
+
+
+	esp_err = nvs_open(clock_nvs_namespace, NVS_READWRITE, &handle);
+	if(esp_err == ESP_OK){
+
+		/* set timezone */
+		size_t sz = sizeof(timezone_t);
+		esp_err = nvs_set_blob(handle, "tz", tz, sz);
+		if(esp_err != ESP_OK){
+			ESP_LOGE(TAG, "nvs_set_blob failed with error: %d", esp_err);
+			return esp_err;
+		}
+
+		esp_err = nvs_commit(handle);
+		if (esp_err != ESP_OK) return esp_err;
+
+		nvs_close(handle);
+
+	}
+	else{
+		ESP_LOGE(TAG, "Could not get a handle to NVS as NVS_READWRITE");
+	}
+
+	return esp_err;
+}
+
 /**
  * @brief this is the main RTOS task that controls everything in the clock
  */
 void clock_task(void *pvParameter){
 
 
-	//vTaskDelay( pdMS_TO_TICKS(5000));
-
+	/* debug, should be cut in prod code */
 	char strftime_buf[64];
+
+	/* memory init */
+	memset(&transitions, 0x00, sizeof(CLOCK_MAX_TRANSITIONS) * CLOCK_MAX_TRANSITIONS);
+	clock_nvs_mutex = xSemaphoreCreateMutex();
 
 	/* register clock queue */
 	clock_queue = xQueueCreate(10, sizeof(clock_queue_message_t));
@@ -264,12 +341,13 @@ void clock_task(void *pvParameter){
 				case CLOCK_MESSAGE_TICK:
 					if(time_set){
 						clock_tick();
-						strftime(strftime_buf, sizeof(strftime_buf), "%c", clock_time_tm_ptr);
-						ESP_LOGE(TAG, "TICK! date/time is: %s", strftime_buf);
+						//strftime(strftime_buf, sizeof(strftime_buf), "%c", clock_time_tm_ptr);
+						//ESP_LOGE(TAG, "TICK! date/time is: %s", strftime_buf);
 					}
 					break;
 				case CLOCK_MESSAGE_RECEIVE_TIME_API:
 					;cJSON *json = (cJSON*)msg.param;
+					bool updateNVS = false;
 					if(json){
 						char *json_str = cJSON_Print(json);
 						ESP_LOGI(TAG, "%s", json_str);
@@ -288,6 +366,7 @@ void clock_task(void *pvParameter){
 							cJSON *timezoneString = cJSON_GetObjectItemCaseSensitive(timezone, "timezoneString");
 							if(cJSON_IsString(timezoneString) && strcmp(clock_timezone.name, timezoneString->valuestring) != 0){
 								/* realign clock_timezone */
+								updateNVS = true;
 								strcpy(clock_timezone.name, timezoneString->valuestring);
 								ESP_LOGI(TAG, "Timezone set to: %s", clock_timezone.name);
 							}
@@ -295,9 +374,15 @@ void clock_task(void *pvParameter){
 							cJSON *offset = cJSON_GetObjectItemCaseSensitive(timezone, "offset");
 							if(cJSON_IsNumber(offset) && clock_timezone.offset != offset->valueint){
 								/* realign offset if needed */
+								updateNVS = true;
 								clock_timezone.offset = offset->valueint;
 								ESP_LOGI(TAG, "Offset set to: %d", clock_timezone.offset);
 							}
+						}
+
+						/* NVS needs to updated: spawn a low priority task that'll take care of it when possible */
+						if(updateNVS){
+							xTaskCreate(&clock_save_timezone_task, "ck_save_tz", 4096, NULL, 1, NULL);
 						}
 
 						free(json_str);

@@ -59,6 +59,9 @@ apply offset manually to the timestamp.
 /** in seconds, the maximum drift allowed before we force a refresh of the time */
 #define CLOCK_MAX_ACCEPTABLE_TIME_DRIFT		60.0
 
+/** number of transitions that will be stored in advance. Most timezones have 0 or 2 (summer time) so the default of 3 is plenty. */
+#define CLOCK_MAX_TRANSITIONS				3
+
 
 typedef enum clock_message_t{
 	CLOCK_MESSAGE_NONE = 0,
@@ -66,6 +69,7 @@ typedef enum clock_message_t{
 	CLOCK_MESSAGE_STA_GOT_IP = 2,
 	CLOCK_MESSAGE_STA_DISCONNECTED = 3,
 	CLOCK_MESSAGE_RECEIVE_TIME_API = 4,
+	CLOCK_MESSAGE_RECEIVE_TRANSITIONS_API = 5,
 	CLOCK_MESSAGE_MAX = 0x7fffffff
 }clock_message_t;
 
@@ -80,6 +84,11 @@ typedef struct timezone_t{
 	char name[CLOCK_MAX_TZ_STRING_LENGTH];
 }timezone_t;
 
+typedef struct transition_t{
+	int32_t offset;
+	time_t timestamp;
+}transition_t;
+
 
 #define GPIO_INPUT_IO_4 				4
 #define ESP_INTR_FLAG_DEFAULT 			0
@@ -90,6 +99,11 @@ void clock_notify_time_api_response(cJSON *json);
 void clock_tick();
 void clock_task(void *pvParameter);
 void clock_register_sqw_interrupt();
+
+esp_err_t clock_save_timezone(timezone_t *tz);
+bool clock_nvs_lock(TickType_t xTicksToWait);
+void clock_nvs_unlock();
+void clock_save_timezone_task(void *pvParameter);
 
 void clock_change_timezone(timezone_t tz);
 esp_err_t clock_get_timezone(timezone_t *tz);
