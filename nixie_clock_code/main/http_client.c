@@ -52,9 +52,8 @@ static const char *HTTP_CLIENT_TRANSITIONS_API_URL = "https://api.mclk.org/trans
 SemaphoreHandle_t http_client_mutex = NULL;
 
 
-/* used to keep track of request bodies */
-char *http_client_body_str = NULL;
-cJSON *http_client_body = NULL;
+/* used to keep track of request bodies that eventually need to be freed */
+static char *http_client_body_str = NULL;
 
 
 bool http_client_lock(TickType_t xTicksToWait){
@@ -79,12 +78,16 @@ void http_client_unlock(){
 void http_client_process_data(esp_http_client_event_t *evt){
 	if(evt->user_data == (void*)HTTP_CLIENT_TIME_API_URL){
 		/* process json answer */
-
 		if(evt->data_len){
 			cJSON *json = cJSON_Parse((char*)evt->data);
 			clock_notify_time_api_response(json);
 		}
-		//printf("%.*s", evt->data_len, (char*)evt->data);
+	}
+	else if(evt->user_data == (void*)HTTP_CLIENT_TRANSITIONS_API_URL){
+		if(evt->data_len){
+			cJSON *json = cJSON_Parse((char*)evt->data);
+			clock_notify_transitions_api_response(json);
+		}
 	}
 }
 
@@ -154,9 +157,9 @@ void http_client_task(void *pvParameter){
 
 void http_client_cleanup(esp_http_client_handle_t client){
 
-	if(http_client_body){
-		cJSON_Delete(http_client_body);
+	if(http_client_body_str){
 		free(http_client_body_str);
+		http_client_body_str = NULL;
 	}
 
 	esp_http_client_cleanup(client);
@@ -223,7 +226,7 @@ void http_client_get_transitions(timezone_t timezone, time_t now){
 void http_client_get_api_time(char* timezone){
 
 
-	if(http_client_lock( pdMS_TO_TICKS(5000) )){
+	if(http_client_lock( pdMS_TO_TICKS( 10000 ) )){
 
 
 		esp_http_client_config_t config = {
@@ -240,18 +243,19 @@ void http_client_get_api_time(char* timezone){
 			cJSON *body = NULL;
 			cJSON *tz = NULL;
 			char* body_str = NULL;
-			char buff[HTTP_CLIENT_MAX_REQUEST_SIZE];
 
 			/* generate the request body */
 			body = cJSON_CreateObject();
 			tz = cJSON_CreateString(timezone);
 			cJSON_AddItemToObject(body, "timezone", tz);
 			body_str = cJSON_Print(body);
-			strcpy(buff, body_str);
-
 			cJSON_Delete(body);
-			free(body_str);
-			esp_http_client_set_post_field(client, buff, strlen(buff));
+
+			/* save pointer for later cleanup */
+			http_client_body_str = body_str;
+
+			/* set body */
+			esp_http_client_set_post_field(client, body_str, strlen(body_str));
 		}
 
 
