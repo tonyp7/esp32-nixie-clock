@@ -45,6 +45,7 @@ Contains wrappers around the esp http client for the mclk.org time API.
 
 static const char TAG[] = "HTTP_CLIENT";
 static const char *HTTP_CLIENT_TIME_API_URL = "https://api.mclk.org/time";
+static const char *HTTP_CLIENT_TRANSITIONS_API_URL = "https://api.mclk.org/transitions";
 
 
 /** @brief for the sake of simplicity you can only do one HTTP request at a time; strictly enforced by this mutex */
@@ -126,6 +127,7 @@ void http_client_init(){
 }
 
 
+
 void http_client_task(void *pvParameter){
 
 	esp_err_t err;
@@ -158,6 +160,64 @@ void http_client_cleanup(esp_http_client_handle_t client){
 	}
 
 	esp_http_client_cleanup(client);
+}
+
+
+void http_client_get_transitions(timezone_t timezone, time_t now){
+	if(http_client_lock( pdMS_TO_TICKS(5000) )){
+
+
+		esp_http_client_config_t config = {
+				.url = HTTP_CLIENT_TRANSITIONS_API_URL,
+				.event_handler = _http_event_handler,
+				.is_async = true,
+				.timeout_ms = 10000,
+				.user_data = (void*)HTTP_CLIENT_TRANSITIONS_API_URL
+		};
+		esp_http_client_handle_t client = esp_http_client_init(&config);
+
+
+		if(timezone.name != NULL){
+			cJSON *body = NULL;
+			cJSON *tz = NULL;
+			cJSON *from = NULL;
+			cJSON *to = NULL;
+
+			char* body_str = NULL;
+			char buff[HTTP_CLIENT_MAX_REQUEST_SIZE];
+
+			/* generate the request body */
+			body = cJSON_CreateObject();
+
+			/* timezone */
+			tz = cJSON_CreateString(timezone.name);
+			cJSON_AddItemToObject(body, "timezone", tz);
+
+			/* from */
+			time_t from_time = now - 60*60*24 ; /* -1 day back to avoid some weird edge cases by getting transitions strictly on now timestamp */
+			from = cJSON_CreateNumber(from_time);
+			cJSON_AddItemToObject(body, "from", from);
+
+			/* to */
+			time_t to_time = now + 60*60*24*365; /* +1 year */
+			to = cJSON_CreateNumber(to_time);
+			cJSON_AddItemToObject(body, "to", to);
+
+
+			/* transform to json string then set as body */
+			body_str = cJSON_Print(body);
+			strcpy(buff, body_str);
+			cJSON_Delete(body);
+			free(body_str);
+			esp_http_client_set_post_field(client, buff, strlen(buff));
+		}
+
+
+
+	}
+	else{
+		ESP_LOGE(TAG, "Failed to acquire HTTP client mutex");
+	}
 }
 
 void http_client_get_api_time(char* timezone){
