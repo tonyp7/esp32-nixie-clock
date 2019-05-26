@@ -81,6 +81,14 @@ static QueueHandle_t clock_queue = NULL;
 static bool time_set = false;
 
 
+time_t clock_get_current_time_utc(){
+	return timestamp_utc;
+}
+
+timezone_t clock_get_current_timezone(){
+	return clock_timezone;
+}
+
 void clock_notify_sta_got_ip(void* pvArgument){
 	if(clock_queue){
 		clock_queue_message_t msg;
@@ -183,7 +191,7 @@ void clock_register_sqw_interrupt(){
 
 
 
-esp_err_t clock_get_timezone(timezone_t *tz){
+esp_err_t clock_get_nvs_timezone(timezone_t *tz){
 	nvs_handle handle;
 	esp_err_t esp_err;
 
@@ -324,7 +332,7 @@ void clock_task(void *pvParameter){
 	/* init timezone and attempt to get what was saved in nvs */
 	clock_timezone.offset = 0;
 	strcpy(clock_timezone.name, "UTC");
-	ESP_ERROR_CHECK(clock_get_timezone(&clock_timezone));
+	ESP_ERROR_CHECK(clock_get_nvs_timezone(&clock_timezone));
 
 	/* register interrupt on the 1Hz sqw signal coming from the DS3231 */
 	clock_register_sqw_interrupt();
@@ -338,7 +346,6 @@ void clock_task(void *pvParameter){
 			switch(msg.message){
 				case CLOCK_MESSAGE_STA_GOT_IP:
 					http_client_get_api_time("Europe/Paris");
-					//http_client_get_transitions(clock_timezone, timestamp_utc);
 					break;
 				case CLOCK_MESSAGE_TICK:
 					if(time_set){
@@ -351,9 +358,33 @@ void clock_task(void *pvParameter){
 					http_client_get_transitions(clock_timezone, timestamp_utc);
 					break;
 				case CLOCK_MESSAGE_RECEIVE_TRANSITIONS_API:{
+
+
 					cJSON *json = (cJSON*)msg.param;
-					char *json_str = cJSON_Print(json);
-					ESP_LOGI(TAG, "%s", json_str);
+
+					if(json != NULL){
+						char *json_str = cJSON_Print(json);
+						ESP_LOGI(TAG, "%s", json_str);
+
+						cJSON *transition = NULL;
+						cJSON *transitions = cJSON_GetObjectItemCaseSensitive(json, "transitions");
+						if(transitions){
+							cJSON_ArrayForEach(transition, transitions){
+								if(transition){
+									cJSON *transitionUnixEpoch = cJSON_GetObjectItemCaseSensitive(transition, "transitionUnixEpoch");
+									cJSON *toOffset = cJSON_GetObjectItemCaseSensitive(transition, "toOffset");
+
+									if (transitionUnixEpoch && toOffset && cJSON_IsNumber(transitionUnixEpoch) && cJSON_IsNumber(toOffset)){
+										printf("%d - %d\n", transitionUnixEpoch->valueint, toOffset->valueint);
+									}
+								}
+							}
+						}
+
+						free(json_str);
+						cJSON_Delete(json);
+
+					}
 					}
 					break;
 				case CLOCK_MESSAGE_RECEIVE_TIME_API:
@@ -390,7 +421,6 @@ void clock_task(void *pvParameter){
 								ESP_LOGI(TAG, "Offset set to: %d", clock_timezone.offset);
 							}
 						}
-
 
 						/* memory clean up */
 						free(json_str);

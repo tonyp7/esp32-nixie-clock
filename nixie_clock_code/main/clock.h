@@ -102,13 +102,16 @@ void clock_tick();
 void clock_task(void *pvParameter);
 void clock_register_sqw_interrupt();
 
+time_t clock_get_current_time_utc();
+timezone_t clock_get_current_timezone();
+
 esp_err_t clock_save_timezone(timezone_t *tz);
 bool clock_nvs_lock(TickType_t xTicksToWait);
 void clock_nvs_unlock();
 void clock_save_timezone_task(void *pvParameter);
 
 void clock_change_timezone(timezone_t tz);
-esp_err_t clock_get_timezone(timezone_t *tz);
+esp_err_t clock_get_nvs_timezone(timezone_t *tz);
 
 bool clock_realign(time_t new_t);
 
