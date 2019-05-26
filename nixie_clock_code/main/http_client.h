@@ -35,6 +35,7 @@ void http_client_cleanup(esp_http_client_handle_t client);
 bool http_client_lock(TickType_t xTicksToWait);
 void http_client_unlock();
 void http_client_get_api_time(char* timezone);
+void http_client_get_transitions(timezone_t timezone, time_t now);
 void http_rest();
 void http_client_task(void *pvParameter);
 

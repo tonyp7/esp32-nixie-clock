@@ -55,6 +55,9 @@ SemaphoreHandle_t http_client_mutex = NULL;
 /* used to keep track of request bodies that eventually need to be freed */
 static char *http_client_body_str = NULL;
 
+/* used to keep track of response */
+static char *http_client_response_str = NULL;
+
 
 bool http_client_lock(TickType_t xTicksToWait){
 	if(http_client_mutex){
@@ -77,15 +80,21 @@ void http_client_unlock(){
 
 void http_client_process_data(esp_http_client_event_t *evt){
 	if(evt->user_data == (void*)HTTP_CLIENT_TIME_API_URL){
+
 		/* process json answer */
-		if(evt->data_len){
-			cJSON *json = cJSON_Parse((char*)evt->data);
+		if(http_client_response_str){
+			/*ESP_LOGI(TAG, "%s", http_client_response_str);*/
+			cJSON *json = cJSON_Parse(http_client_response_str);
 			clock_notify_time_api_response(json);
 		}
+
 	}
 	else if(evt->user_data == (void*)HTTP_CLIENT_TRANSITIONS_API_URL){
-		if(evt->data_len){
-			cJSON *json = cJSON_Parse((char*)evt->data);
+
+		/* process json answer */
+		if(http_client_response_str){
+			/*ESP_LOGI(TAG, "%s", http_client_response_str);*/
+			cJSON *json = cJSON_Parse(http_client_response_str);
 			clock_notify_transitions_api_response(json);
 		}
 	}
@@ -107,10 +116,24 @@ esp_err_t _http_event_handler(esp_http_client_event_t *evt){
             break;
         case HTTP_EVENT_ON_DATA:
             ESP_LOGI(TAG, "HTTP_EVENT_ON_DATA, len=%d", evt->data_len);
-            http_client_process_data(evt);
+
+            if(http_client_response_str == NULL){
+            	/* allocate memory */
+            	int sz = esp_http_client_get_content_length(evt->client) + 1;
+            	http_client_response_str = (char*)malloc(sizeof(char) * sz);
+            	memset(http_client_response_str, '\0', sz);
+            }
+            /* copy data over */
+            char* tmp = (char*)malloc(sizeof(char) * (evt->data_len + 1));
+            memset(tmp, '\0', evt->data_len + 1);
+            memcpy(tmp, evt->data, evt->data_len);
+            strcat(http_client_response_str, tmp);
+            free(tmp);
+
             break;
         case HTTP_EVENT_ON_FINISH:
             ESP_LOGI(TAG, "HTTP_EVENT_ON_FINISH");
+            http_client_process_data(evt);
             http_client_cleanup(evt->client);
             http_client_unlock();
             break;
@@ -162,6 +185,11 @@ void http_client_cleanup(esp_http_client_handle_t client){
 		http_client_body_str = NULL;
 	}
 
+	if(http_client_response_str){
+		free(http_client_response_str);
+		http_client_response_str = NULL;
+	}
+
 	esp_http_client_cleanup(client);
 }
 
@@ -187,7 +215,6 @@ void http_client_get_transitions(timezone_t timezone, time_t now){
 			cJSON *to = NULL;
 
 			char* body_str = NULL;
-			char buff[HTTP_CLIENT_MAX_REQUEST_SIZE];
 
 			/* generate the request body */
 			body = cJSON_CreateObject();
@@ -207,12 +234,18 @@ void http_client_get_transitions(timezone_t timezone, time_t now){
 			cJSON_AddItemToObject(body, "to", to);
 
 
-			/* transform to json string then set as body */
+			/* transform to json string then clean up cJSON object */
 			body_str = cJSON_Print(body);
-			strcpy(buff, body_str);
 			cJSON_Delete(body);
-			free(body_str);
-			esp_http_client_set_post_field(client, buff, strlen(buff));
+
+			/* save pointer for later cleanup */
+			http_client_body_str = body_str;
+
+			/* set body */
+			esp_http_client_set_post_field(client, body_str, strlen(body_str));
+
+			/* spawn low priority task that'll perform the request */
+			xTaskCreate(&http_client_task, "http_client_task", 4096, (void*)client, 1, NULL);
 		}
 
 
