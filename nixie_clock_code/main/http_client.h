@@ -37,7 +37,7 @@ void http_client_unlock();
 void http_client_get_api_time(char* timezone);
 void http_client_get_transitions(timezone_t timezone, time_t now);
 void http_rest();
-void http_client_task(void *pvParameter);
+//void http_client_task(void *pvParameter);
 
 
 #endif /* MAIN_INCLUDE_HTTP_CLIENT_H_ */
