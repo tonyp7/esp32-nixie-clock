@@ -331,18 +331,29 @@ void clock_task(void *pvParameter){
 
 
 	clock_queue_message_t msg;
+
 	for(;;) {
 		if(xQueueReceive(clock_queue, &msg, pdMS_TO_TICKS(11100))) { /* portMAX_DELAY */
 
 			switch(msg.message){
 				case CLOCK_MESSAGE_STA_GOT_IP:
-					http_client_get_api_time("Asia/Singapore");
+					http_client_get_api_time("Europe/Paris");
+					//http_client_get_transitions(clock_timezone, timestamp_utc);
 					break;
 				case CLOCK_MESSAGE_TICK:
 					if(time_set){
 						clock_tick();
 						//strftime(strftime_buf, sizeof(strftime_buf), "%c", clock_time_tm_ptr);
 						//ESP_LOGE(TAG, "TICK! date/time is: %s", strftime_buf);
+					}
+					break;
+				case CLOCK_MESSAGE_REQUEST_TRANSITIONS_API_CALL:
+					http_client_get_transitions(clock_timezone, timestamp_utc);
+					break;
+				case CLOCK_MESSAGE_RECEIVE_TRANSITIONS_API:{
+					cJSON *json = (cJSON*)msg.param;
+					char *json_str = cJSON_Print(json);
+					ESP_LOGI(TAG, "%s", json_str);
 					}
 					break;
 				case CLOCK_MESSAGE_RECEIVE_TIME_API:
@@ -380,13 +391,25 @@ void clock_task(void *pvParameter){
 							}
 						}
 
+
+						/* memory clean up */
+						free(json_str);
+						cJSON_Delete(json);
+
 						/* NVS needs to updated: spawn a low priority task that'll take care of it when possible */
 						if(updateNVS){
 							xTaskCreate(&clock_save_timezone_task, "ck_save_tz", 4096, NULL, 1, NULL);
 						}
 
-						free(json_str);
-						cJSON_Delete(json);
+						/* finally, enqueue a transitions with this timezone */
+						clock_queue_message_t m;
+						m.message = CLOCK_MESSAGE_REQUEST_TRANSITIONS_API_CALL;
+						m.param = NULL;
+						xQueueSend(clock_queue, &m, portMAX_DELAY);
+
+
+
+
 					}
 					break;
 				default:

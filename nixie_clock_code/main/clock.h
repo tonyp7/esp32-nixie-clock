@@ -70,6 +70,7 @@ typedef enum clock_message_t{
 	CLOCK_MESSAGE_STA_DISCONNECTED = 3,
 	CLOCK_MESSAGE_RECEIVE_TIME_API = 4,
 	CLOCK_MESSAGE_RECEIVE_TRANSITIONS_API = 5,
+	CLOCK_MESSAGE_REQUEST_TRANSITIONS_API_CALL = 6,
 	CLOCK_MESSAGE_MAX = 0x7fffffff
 }clock_message_t;
 
@@ -96,6 +97,7 @@ typedef struct transition_t{
 void clock_notify_sta_got_ip(void* pvArgument);
 void clock_notify_sta_disconnected();
 void clock_notify_time_api_response(cJSON *json);
+void clock_notify_transitions_api_response(cJSON *json);
 void clock_tick();
 void clock_task(void *pvParameter);
 void clock_register_sqw_interrupt();
