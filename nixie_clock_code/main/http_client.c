@@ -342,7 +342,7 @@ static void http_client_api_transitions_task(void *pvParameter){
 void http_client_get_transitions(timezone_t timezone, time_t now){
 
 
-	if(http_client_lock( pdMS_TO_TICKS( 10000 ) )){
+	if(http_client_lock( pdMS_TO_TICKS( 60000 ) )){
 		/* spawn a low priorty task that will take care of the request asynchronously */
 		xTaskCreate(&http_client_api_transitions_task, "http_transitions", 8192, NULL, 2, NULL);
 	}
@@ -437,7 +437,7 @@ void http_client_get_transitions(timezone_t timezone, time_t now){
 void http_client_get_api_time(char* timezone){
 
 
-	if(http_client_lock( pdMS_TO_TICKS( 10000 ) )){
+	if(http_client_lock( pdMS_TO_TICKS( 60000 ) )){
 
 
 

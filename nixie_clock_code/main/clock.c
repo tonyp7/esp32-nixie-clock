@@ -66,13 +66,14 @@ static const char TAG[] = "clock";
 const char clock_nvs_namespace[] = "clock";
 
 /* @brief storage for timestamp transitions */
-static transition_t transitions[CLOCK_MAX_TRANSITIONS];
+static transition_t clock_transitions[CLOCK_MAX_TRANSITIONS];
 
 /* @brief mutex to prevent several read/write to nvs at the same time */
 static SemaphoreHandle_t clock_nvs_mutex = NULL;
 
 time_t timestamp_utc;
 time_t timestamp_local;
+time_t timestamp_transitions_check = 0;
 struct tm *clock_time_tm_ptr; /*used for localtime function which returns a static pointer */
 struct tm clock_time_tm;
 static timezone_t clock_timezone;
@@ -145,9 +146,51 @@ static void IRAM_ATTR gpio_isr_handler(void* arg){
 }
 
 
+void clock_transitions_shift_left(){
+
+	int i = CLOCK_MAX_TRANSITIONS - 1;
+	while(i > 1){
+		clock_transitions[i - 1] = clock_transitions[i];
+		i--;
+	}
+}
+
 void clock_tick(){
 	/* +1 second */
-	timestamp_local = ++timestamp_utc + clock_timezone.offset;
+	timestamp_utc++;
+
+	/* check for transitions */
+	int new_offset = clock_timezone.offset;
+	while(timestamp_utc >= clock_transitions[0].timestamp){
+		/* save found offset */
+		new_offset = clock_transitions[0].offset;
+
+		/* shift transitions table left */
+		clock_transitions_shift_left();
+	}
+
+	/* found a new timezone offset ? */
+	if(new_offset != clock_timezone.offset){
+		clock_timezone.offset = new_offset;
+		/* spawn low priority task that'll save the new offset in nvs memory */
+		xTaskCreate(&clock_save_timezone_task, "ck_save_tz", 4096, NULL, 2, NULL);
+
+		/* if a transition was processed it's a good idea to force a refresh soon */
+		timestamp_transitions_check = timestamp_utc + (time_t)(60*60*24*15);
+	}
+
+
+	/* is it time to check for transitions? */
+	if(timestamp_transitions_check && (timestamp_utc >= timestamp_transitions_check)){
+		clock_queue_message_t msg;
+		msg.message = CLOCK_MESSAGE_REQUEST_TRANSITIONS_API_CALL;
+		msg.param = NULL;
+		xQueueSend(clock_queue, &msg, portMAX_DELAY);
+		timestamp_transitions_check = timestamp_utc + (time_t)(60*60*24*15); /* do another check in 15 days */
+	}
+
+
+	timestamp_local = timestamp_utc + clock_timezone.offset;
 	clock_time_tm_ptr = localtime(&timestamp_local);
 }
 
@@ -297,7 +340,7 @@ void clock_task(void *pvParameter){
 	char strftime_buf[64];
 
 	/* memory init */
-	memset(&transitions, 0x00, sizeof(CLOCK_MAX_TRANSITIONS) * CLOCK_MAX_TRANSITIONS);
+	memset(&clock_transitions, 0x00, sizeof(CLOCK_MAX_TRANSITIONS) * CLOCK_MAX_TRANSITIONS);
 	clock_nvs_mutex = xSemaphoreCreateMutex();
 
 	/* register clock queue */
@@ -369,15 +412,29 @@ void clock_task(void *pvParameter){
 						cJSON *transition = NULL;
 						cJSON *transitions = cJSON_GetObjectItemCaseSensitive(json, "transitions");
 						if(transitions){
+
+							int i=0;
 							cJSON_ArrayForEach(transition, transitions){
 								if(transition){
 									cJSON *transitionUnixEpoch = cJSON_GetObjectItemCaseSensitive(transition, "transitionUnixEpoch");
 									cJSON *toOffset = cJSON_GetObjectItemCaseSensitive(transition, "toOffset");
 
 									if (transitionUnixEpoch && toOffset && cJSON_IsNumber(transitionUnixEpoch) && cJSON_IsNumber(toOffset)){
-										printf("%d - %d\n", transitionUnixEpoch->valueint, toOffset->valueint);
+
+										/* overflow protection */
+										if(!(i >= CLOCK_MAX_TRANSITIONS)){
+											/* add transitions */
+											clock_transitions[i].offset = toOffset->valueint;
+											clock_transitions[i].timestamp = (time_t)transitionUnixEpoch->valuedouble;
+											i++;
+										}
 									}
 								}
+							}
+
+							if(i==0){
+								/* no transitions were processed. Run another check in a few days */
+								timestamp_transitions_check = timestamp_utc + (time_t)(60*60*24*15);
 							}
 						}
 
@@ -428,7 +485,7 @@ void clock_task(void *pvParameter){
 
 						/* NVS needs to updated: spawn a low priority task that'll take care of it when possible */
 						if(updateNVS){
-							xTaskCreate(&clock_save_timezone_task, "ck_save_tz", 4096, NULL, 1, NULL);
+							xTaskCreate(&clock_save_timezone_task, "ck_save_tz", 4096, NULL, 2, NULL);
 						}
 
 						/* finally, enqueue a transitions with this timezone */
