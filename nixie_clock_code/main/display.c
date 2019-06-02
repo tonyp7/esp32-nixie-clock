@@ -7,6 +7,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <byteswap.h>
 
 #include "esp_err.h"
 #include "driver/gpio.h"
@@ -24,7 +25,8 @@ esp_err_t display_init(){
 
 	esp_err_t ret;
 
-	display_vram = (uint16_t*)malloc(sizeof(uint16_t) * 6);
+	display_vram = (uint16_t*)malloc(sizeof(uint16_t) * DISPLAY_DIGIT_COUNT);
+	memset(display_vram, 0x00, sizeof(uint16_t) * DISPLAY_DIGIT_COUNT);
 
 	gpio_set_direction(DISPLAY_SPI_CS_GPIO, GPIO_MODE_OUTPUT);
 
@@ -45,20 +47,75 @@ esp_err_t display_init(){
 
 
 	/* Initialize the SPI bus */
-	ret=spi_bus_initialize(HSPI_HOST, &buscfg, 1);
-	assert(ret==ESP_OK);
+	ret = spi_bus_initialize(HSPI_HOST, &buscfg, 1);
+	if(ret!=ESP_OK) return ret;
 
 	/* Attach the display to the SPI bus */
 	ret=spi_bus_add_device(HSPI_HOST, &devcfg, &spi);
-
-	assert(ret==ESP_OK);
+	if(ret!=ESP_OK) return ret;
 
 
 	/* prepare transaction */
 	memset(&t, 0x00, sizeof(t));
-	t.length= 6 * 16; /* 6 digits, 16 bits per digits */
+	t.length = DISPLAY_DIGIT_COUNT * 16; /* 6 digits, 16 bits per digits */
 	t.tx_buffer = display_vram;
-	t.user=NULL;
+	t.user = NULL;
 
 	return ret;
+}
+
+
+
+uint16_t* display_get_vram(){
+	return display_vram;
+}
+
+esp_err_t display_write_vram(){
+	esp_err_t ret;
+
+
+	/* due to esp32 endianess, we need to swipe bytes */
+	for(int i=0;i<6;i++){
+		display_vram[i] = __bswap_16(display_vram[i]);
+	}
+
+	gpio_set_level(DISPLAY_SPI_CS_GPIO, 0);
+	ret=spi_device_transmit(spi, &t);
+	gpio_set_level(DISPLAY_SPI_CS_GPIO, 1);
+
+	return ret;
+}
+
+esp_err_t display_write_time(struct tm *time){
+
+	if(time){
+
+		/* seconds */
+		display_vram[0] =  (uint16_t) (1 << (time->tm_sec % 10));
+		display_vram[1] =  (uint16_t) (1 << (time->tm_sec / 10));
+
+		/* minutes */
+		display_vram[2] =  (uint16_t) (1 << (time->tm_min % 10));
+		display_vram[3] =  (uint16_t) (1 << (time->tm_min / 10));
+
+		/* hours */
+		display_vram[4] =  (uint16_t) (1 << (time->tm_hour % 10));
+		display_vram[5] =  (uint16_t) (1 << (time->tm_hour / 10));
+
+
+		if(time->tm_sec % 2 == 0){
+			display_vram[2] |= DISPLAY_TOP_DOT_MASK;
+			display_vram[2] |= DISPLAY_BOTTOM_DOT_MASK;
+			display_vram[4] |= DISPLAY_TOP_DOT_MASK;
+			display_vram[4] |= DISPLAY_BOTTOM_DOT_MASK;
+		}
+
+
+		return display_write_vram();
+	}
+	else{
+		return ESP_ERR_INVALID_ARG;
+	}
+
+
 }
