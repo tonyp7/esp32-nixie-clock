@@ -52,10 +52,8 @@ SOFTWARE.
 #include "ds3231.h"
 #include "i2c.h"
 #include "http_client.h"
+#include "display.h"
 
-
-
-#define CLOCK_SQW_INTERRUPT_GPIO
 
 
 
@@ -74,7 +72,7 @@ static SemaphoreHandle_t clock_nvs_mutex = NULL;
 time_t timestamp_utc;
 time_t timestamp_local;
 time_t timestamp_transitions_check = 0;
-struct tm *clock_time_tm_ptr; /*used for localtime function which returns a static pointer */
+struct tm *clock_time_tm_ptr = NULL; /*used for localtime function which returns a static pointer */
 struct tm clock_time_tm;
 static timezone_t clock_timezone;
 
@@ -90,7 +88,7 @@ timezone_t clock_get_current_timezone(){
 	return clock_timezone;
 }
 
-void clock_notify_sta_got_ip(void* pvArgument){
+void clock_notify_sta_got_ip(void *pvArgument){
 	if(clock_queue){
 		clock_queue_message_t msg;
 		msg.message = CLOCK_MESSAGE_STA_GOT_IP;
@@ -131,18 +129,14 @@ void clock_change_timezone(timezone_t tz){
 }
 
 
-
-
-
 static void IRAM_ATTR gpio_isr_handler(void* arg){
     //uint32_t gpio_num = (uint32_t) arg;
 
 	clock_queue_message_t msg;
 	msg.message = CLOCK_MESSAGE_TICK;
-
+	msg.param = NULL;
     xQueueSendFromISR(clock_queue, &msg, NULL);
 	return;
-
 }
 
 
@@ -161,7 +155,7 @@ void clock_tick(){
 
 	/* check for transitions */
 	int new_offset = clock_timezone.offset;
-	while(timestamp_utc >= clock_transitions[0].timestamp){
+	while(clock_transitions[0].timestamp && (timestamp_utc >= clock_transitions[0].timestamp)){
 		/* save found offset */
 		new_offset = clock_transitions[0].offset;
 
@@ -171,6 +165,7 @@ void clock_tick(){
 
 	/* found a new timezone offset ? */
 	if(new_offset != clock_timezone.offset){
+		ESP_LOGI(TAG, "Saving new offset: %d vs old: %d", new_offset, clock_timezone.offset);
 		clock_timezone.offset = new_offset;
 		/* spawn low priority task that'll save the new offset in nvs memory */
 		xTaskCreate(&clock_save_timezone_task, "ck_save_tz", 4096, NULL, 2, NULL);
@@ -223,7 +218,8 @@ void clock_register_sqw_interrupt(){
 	/* Input */
 	io_conf.mode = GPIO_MODE_INPUT;
 	/* No pull up since there is already a 10k external pull up */
-	io_conf.pull_up_en = 0;
+	io_conf.pull_up_en = GPIO_PULLUP_DISABLE;
+	//io_conf.pull_down_en = GPIO_PULLDOWN_ENABLE;
 	gpio_config(&io_conf);
 
 
@@ -384,17 +380,20 @@ void clock_task(void *pvParameter){
 	clock_queue_message_t msg;
 
 	for(;;) {
-		if(xQueueReceive(clock_queue, &msg, pdMS_TO_TICKS(11100))) { /* portMAX_DELAY */
+		if(xQueueReceive(clock_queue, &msg, pdMS_TO_TICKS(11001))) { /* portMAX_DELAY */
 
 			switch(msg.message){
 				case CLOCK_MESSAGE_STA_GOT_IP:
-					http_client_get_api_time("Europe/Paris");
+					ESP_LOGI(TAG, "CLOCK_MESSAGE_STA_GOT_IP");
+					http_client_get_api_time("Asia/Singapore");
 					break;
 				case CLOCK_MESSAGE_TICK:
+//					ESP_LOGI(TAG, "CLOCK_MESSAGE_TICK");
 					if(time_set){
 						clock_tick();
-						//strftime(strftime_buf, sizeof(strftime_buf), "%c", clock_time_tm_ptr);
-						//ESP_LOGE(TAG, "TICK! date/time is: %s", strftime_buf);
+						display_write_time(clock_time_tm_ptr);
+//						strftime(strftime_buf, sizeof(strftime_buf), "%c", clock_time_tm_ptr);
+//						ESP_LOGI(TAG, "TICK! date/time is: %s", strftime_buf);
 					}
 					break;
 				case CLOCK_MESSAGE_REQUEST_TRANSITIONS_API_CALL:
@@ -500,6 +499,7 @@ void clock_task(void *pvParameter){
 					}
 					break;
 				default:
+					ESP_LOGI(TAG, "DEFAULT");
 					break;
 			}
 
@@ -507,12 +507,6 @@ void clock_task(void *pvParameter){
 		taskYIELD();
 	}
 
-	for(;;){
-
-		ESP_LOGE(TAG, "temp: %.2f", ds3231_get_temperature());
-		vTaskDelay(1000 / portTICK_PERIOD_MS);
-
-	}
 
 	vTaskDelete( NULL );
 

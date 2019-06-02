@@ -39,6 +39,9 @@ apply offset manually to the timestamp.
 #ifndef MAIN_CLOCK_H_
 #define MAIN_CLOCK_H_
 
+
+#include "cJSON.h"
+
 /** @brief Defines the task priority of the clock (main task).
  *  This should be the highest priority task unless very specific reason. Default: 10.
  */
@@ -93,6 +96,9 @@ typedef struct transition_t{
 
 #define GPIO_INPUT_IO_4 				4
 #define ESP_INTR_FLAG_DEFAULT 			0
+
+
+
 
 void clock_notify_sta_got_ip(void* pvArgument);
 void clock_notify_sta_disconnected();
