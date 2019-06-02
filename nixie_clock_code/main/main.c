@@ -54,6 +54,7 @@ SOFTWARE.
 #include "clock.h"
 #include "i2c.h"
 #include "ds3231.h"
+#include "display.h"
 
 
 
@@ -72,15 +73,42 @@ void monitoring_task(void *pvParameter)
 	}
 }
 
-void ds3231_test(void *pvParameter){
-	if(i2c_master_init() == ESP_OK){
 
+void test_task(void *pvParameter){
+
+	display_init();
+
+	uint16_t shift = 0;
+	for(;;){
+
+		uint16_t *vram = display_get_vram();
+		vram[0] = (uint16_t)1<<shift;
+		vram[1] = (uint16_t)1<<shift;
+		vram[2] = (uint16_t)1<<shift;
+		vram[3] = (uint16_t)1<<shift;
+		vram[4] = (uint16_t)1<<shift;
+		vram[5] = (uint16_t)1<<shift;
+
+		shift++;
+		if(shift == 10) shift = 0;
+
+		display_write_vram();
+
+
+		vTaskDelay( pdMS_TO_TICKS(250));
 	}
+
 }
 
 
 void app_main()
 {
+
+
+	/* GPIO init for SPI transactions & GPIOs used to control the display */
+	ESP_ERROR_CHECK(display_init());
+
+//	xTaskCreate(&test_task, "test_task", 8192, NULL, CLOCK_TASK_PRIORITY, NULL);
 
 	/* start the wifi manager */
 	wifi_manager_start();
