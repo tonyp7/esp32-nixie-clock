@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <driver/rmt.h>
+#include <math.h>
 
 #include "ws2812.h"
 
@@ -44,6 +45,37 @@ static unsigned int ws2812_pos, ws2812_len, ws2812_half;
 static xSemaphoreHandle ws2812_sem = NULL;
 static intr_handle_t rmt_intr_handle = NULL;
 static rmt_pulse_pair_t ws2812_bits[2];
+
+
+
+float clamp(float d, float min, float max) {
+	const float t = d < min ? min : d;
+	return t > max ? max : t;
+}
+
+
+
+float impulse( float k, float x ){
+    float h = k*x;
+    return h*expf(1.0f-h);
+}
+
+/**
+ * @brief exponential step interp. Typical k: 10.0f. Typical n: 1.0f
+ */
+float exp_step(float x, float k, float n){
+	return expf( -k * powf(x, n) );
+}
+
+/**
+ * @brief smoothstep performs smooth Hermite interpolation between 0 and 1 when edge0 < x < edge1.
+ * This is useful in cases where a threshold function with a smooth transition is desired.
+ */
+float smoothstep(const float edge0, const float edge1, const float x){
+	const float t = clamp((x - edge0) / (edge1 - edge0), 0.0, 1.0);
+	return t * t * (3.0 - 2.0 * t);
+}
+
 
 void ws2812_init_rmt_channel(int rmt_channel)
 {
