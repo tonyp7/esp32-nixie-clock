@@ -37,6 +37,7 @@ This is based of FozzTexx's public domain code on WS2812
 #include <stdint.h>
 
 #define WS2818_DATA_GPIO		23
+#define WS2812_STRIP_SIZE		6
 
 typedef union {
   struct __attribute__ ((packed)) {
@@ -45,7 +46,7 @@ typedef union {
   uint32_t num;
 } rgb_t;
 
-extern void ws2812_init();
+extern esp_err_t ws2812_init();
 extern void ws2812_set_colors(unsigned int length, rgb_t *array);
 
 inline rgb_t ws2812_create_rgb(uint8_t r, uint8_t g, uint8_t b){

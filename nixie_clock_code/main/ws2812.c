@@ -1,3 +1,36 @@
+/*
+Copyright (c) 2019 Tony Pottier
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+@file ws2812.c
+@author Tony Pottier
+@brief Provides a WS2812 "neopixel" software driver
+
+@see https://idyl.io
+@see https://github.com/tonyp7/esp32-nixie-clock
+
+This is based of FozzTexx's public domain code on WS2812
+@see https://github.com/FozzTexx/ws2812-demo
+
+*/
+
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 #include <soc/rmt_struct.h>
@@ -46,7 +79,8 @@ static xSemaphoreHandle ws2812_sem = NULL;
 static intr_handle_t rmt_intr_handle = NULL;
 static rmt_pulse_pair_t ws2812_bits[2];
 
-
+/* the actual array holding the values of each backlight pixel */
+static rgb_t *ws2812_pixels = NULL;
 
 float clamp(float d, float min, float max) {
 	const float t = d < min ? min : d;
@@ -147,11 +181,15 @@ void ws2812_handle_interrupt(void *arg){
   return;
 }
 
-void ws2812_init(){
+esp_err_t ws2812_init(){
+
+	esp_err_t ret;
+
 	DPORT_SET_PERI_REG_MASK(DPORT_PERIP_CLK_EN_REG, DPORT_RMT_CLK_EN);
 	DPORT_CLEAR_PERI_REG_MASK(DPORT_PERIP_RST_EN_REG, DPORT_RMT_RST);
 
-	rmt_set_pin((rmt_channel_t)WS2812_RMT_CHANNEL, RMT_MODE_TX, (gpio_num_t)WS2818_DATA_GPIO);
+	ret = rmt_set_pin((rmt_channel_t)WS2812_RMT_CHANNEL, RMT_MODE_TX, (gpio_num_t)WS2818_DATA_GPIO);
+	if(ret != ESP_OK) return ret;
 
 	ws2812_init_rmt_channel(WS2812_RMT_CHANNEL);
 
@@ -168,9 +206,11 @@ void ws2812_init(){
 	ws2812_bits[1].duration0 = PULSE_T1H;
 	ws2812_bits[1].duration1 = PULSE_T1L;
 
-	esp_intr_alloc(ETS_RMT_INTR_SOURCE, 0, ws2812_handle_interrupt, NULL, &rmt_intr_handle);
+	/* allocate memory for the pixels */
+	ws2812_pixels = (rgb_t*)malloc(sizeof(rgb_t) * WS2812_STRIP_SIZE);
 
-	return;
+	return esp_intr_alloc(ETS_RMT_INTR_SOURCE, 0, ws2812_handle_interrupt, NULL, &rmt_intr_handle);
+
 }
 
 void ws2812_set_colors(unsigned int length, rgb_t *array){
