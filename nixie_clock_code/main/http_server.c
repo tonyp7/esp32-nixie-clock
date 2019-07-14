@@ -77,6 +77,14 @@ extern const uint8_t code_js_end[] asm("_binary_code_js_end");
 extern const uint8_t index_html_start[] asm("_binary_index_html_start");
 extern const uint8_t index_html_end[] asm("_binary_index_html_end");
 
+/* clock specific */
+extern const uint8_t iro_js_start[] asm("_binary_iro_js_start");
+extern const uint8_t iro_js_end[] asm("_binary_iro_js_end");
+extern const uint8_t clock_js_start[] asm("_binary_clock_js_start");
+extern const uint8_t clock_js_end[] asm("_binary_clock_js_end");
+extern const uint8_t clock_css_start[] asm("_binary_style_css_start");
+extern const uint8_t clock_css_end[]   asm("_binary_style_css_end");
+
 
 /* const http headers stored in ROM */
 const static char http_html_hdr[] = "HTTP/1.1 200 OK\nContent-type: text/html\n\n";
@@ -252,6 +260,35 @@ void http_server_netconn_serve(struct netconn *conn) {
 						/* bad request the authentification header is not complete/not the correct format */
 						netconn_write(conn, http_400_hdr, sizeof(http_400_hdr) - 1, NETCONN_NOCOPY);
 					}
+
+				}
+				/* specific to the clock implementation */
+				else if(strstr(line, "GET /clock.js ")) {
+					netconn_write(conn, http_js_hdr, sizeof(http_js_hdr) - 1, NETCONN_NOCOPY);
+					netconn_write(conn, clock_js_start, clock_js_end - clock_js_start, NETCONN_NOCOPY);
+				}
+				else if(strstr(line, "GET /iro.js ")) {
+					netconn_write(conn, http_js_hdr, sizeof(http_js_hdr) - 1, NETCONN_NOCOPY);
+					netconn_write(conn, iro_js_start, iro_js_end - iro_js_start, NETCONN_NOCOPY);
+				}
+				else if(strstr(line, "GET /clock.css ")) {
+					netconn_write(conn, http_css_hdr, sizeof(http_css_hdr) - 1, NETCONN_NOCOPY);
+					netconn_write(conn, clock_css_start, clock_css_end - clock_css_start, NETCONN_NOCOPY);
+				}
+				else if(strstr(line, "POST /color ")) {
+					ESP_LOGD(TAG, "POST /color");
+
+					int lenR = 0, lenG = 0, lenB = 0;
+					int r = 0,g = 0,b = 0;
+					char *color_r = NULL, *color_g = NULL, *color_b = NULL;
+					color_r = http_server_get_header(save_ptr, "X-Custom-R: ", &lenR);
+					color_g = http_server_get_header(save_ptr, "X-Custom-G: ", &lenG);
+					color_b = http_server_get_header(save_ptr, "X-Custom-B: ", &lenB);
+					sscanf(color_r, "%d%*s", &r);
+					sscanf(color_g, "%d%*s", &g);
+					sscanf(color_b, "%d%*s", &b);
+
+					ESP_LOGD(TAG, "color: {r:%d, g:%d, b:%d}", r, g, b);
 
 				}
 				else{
