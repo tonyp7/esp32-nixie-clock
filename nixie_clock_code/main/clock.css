@@ -1,0 +1,13 @@
+#color-picker-container{
+	margin:0 auto;
+	width:300px;
+}
+
+select {
+    font: 1.1em tahoma, arial, sans-serif;
+}
+
+#timezone-select{
+	border:none;
+	width:300px;
+}
