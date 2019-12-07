@@ -43,6 +43,7 @@ This is based of FozzTexx's public domain code on WS2812
 #include <stdlib.h>
 #include <driver/rmt.h>
 #include <math.h>
+#include "esp_log.h"
 
 #include "ws2812.h"
 
@@ -78,6 +79,9 @@ static unsigned int ws2812_pos, ws2812_len, ws2812_half;
 static xSemaphoreHandle ws2812_sem = NULL;
 static intr_handle_t rmt_intr_handle = NULL;
 static rmt_pulse_pair_t ws2812_bits[2];
+static SemaphoreHandle_t ws2812_mutex = NULL;
+
+static const char TAG[] = "ws2812";
 
 /* the actual array holding the values of each backlight pixel */
 static rgb_t *ws2812_pixels = NULL;
@@ -100,6 +104,30 @@ float impulse( float k, float x ){
 float exp_step(float x, float k, float n){
 	return expf( -k * powf(x, n) );
 }
+
+
+
+esp_err_t ws2812_set_backlight_color(rgb_t c){
+
+	if( xSemaphoreTake( ws2812_mutex, 1 ) == pdTRUE ) {
+		for(uint8_t i = 0; i < WS2812_STRIP_SIZE; i++){
+			ws2812_pixels[i] = c;
+		}
+
+		ws2812_set_colors(WS2812_STRIP_SIZE, ws2812_pixels);
+
+		//xSemaphoreGive(ws2812_mutex);
+		return ESP_OK;
+	}
+	else{
+		ESP_LOGE(TAG, "ws2812_set_backlight_color cannot get mutex");
+		return ESP_ERR_INVALID_STATE;
+	}
+
+
+
+}
+
 
 /**
  * @brief smoothstep performs smooth Hermite interpolation between 0 and 1 when edge0 < x < edge1.
@@ -185,6 +213,9 @@ esp_err_t ws2812_init(){
 
 	esp_err_t ret;
 
+	/* mutex for the pixels memory */
+	ws2812_mutex = xSemaphoreCreateMutex();
+
 	DPORT_SET_PERI_REG_MASK(DPORT_PERIP_CLK_EN_REG, DPORT_RMT_CLK_EN);
 	DPORT_CLEAR_PERI_REG_MASK(DPORT_PERIP_RST_EN_REG, DPORT_RMT_RST);
 
@@ -238,6 +269,8 @@ void ws2812_set_colors(unsigned int length, rgb_t *array){
 
 	RMT.conf_ch[WS2812_RMT_CHANNEL].conf1.mem_rd_rst = 1;
 	RMT.conf_ch[WS2812_RMT_CHANNEL].conf1.tx_start = 1;
+
+
 
 	xSemaphoreTake(ws2812_sem, portMAX_DELAY);
 	vSemaphoreDelete(ws2812_sem);

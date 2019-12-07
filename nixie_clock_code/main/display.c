@@ -21,6 +21,10 @@ static uint16_t *display_vram;
 static spi_device_handle_t spi;
 static spi_transaction_t t;
 
+
+
+
+
 esp_err_t display_init(){
 
 	esp_err_t ret;

@@ -345,7 +345,7 @@ void clock_task(void *pvParameter){
 	/* initialized I2C */
 	ESP_ERROR_CHECK(i2c_master_init());
 
-	/* enabled squre wave */
+	/* enabled 1Hz square wave */
 	ESP_ERROR_CHECK(ds3231_enable_square_wave());
 
 	/* HTTP client is needed for the clock task */
@@ -447,10 +447,12 @@ void clock_task(void *pvParameter){
 					;cJSON *json = (cJSON*)msg.param;
 					bool updateNVS = false;
 					if(json){
+
+						/* log response for debug */
 						char *json_str = cJSON_Print(json);
 						ESP_LOGI(TAG, "%s", json_str);
 
-						/* get time, and set it if necessary */
+						/* extract time from json, and set it if necessary */
 						cJSON *unixEpoch = cJSON_GetObjectItemCaseSensitive(json, "unixEpoch");
 						if(cJSON_IsNumber(unixEpoch)){
 							time_t t = unixEpoch->valueint;
@@ -458,7 +460,7 @@ void clock_task(void *pvParameter){
 							time_set = true;
 						}
 
-						/* check timezone */
+						/* check timezone, save in memory if it's different than what was saved previously */
 						cJSON *timezone = cJSON_GetObjectItemCaseSensitive(json, "timezone");
 						if(cJSON_IsObject(timezone)){
 							cJSON *timezoneString = cJSON_GetObjectItemCaseSensitive(timezone, "timezoneString");
@@ -487,14 +489,11 @@ void clock_task(void *pvParameter){
 							xTaskCreate(&clock_save_timezone_task, "ck_save_tz", 4096, NULL, 2, NULL);
 						}
 
-						/* finally, enqueue a transitions with this timezone */
+						/* finally, enqueue a timezone transitions call with the set timezone */
 						clock_queue_message_t m;
 						m.message = CLOCK_MESSAGE_REQUEST_TRANSITIONS_API_CALL;
 						m.param = NULL;
 						xQueueSend(clock_queue, &m, portMAX_DELAY);
-
-
-
 
 					}
 					break;

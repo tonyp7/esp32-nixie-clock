@@ -5,11 +5,46 @@
 		<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 		<meta name="apple-mobile-web-app-capable" content="yes" />
 		<script src="/jquery.js"></script>
+		<script src="/iro.js"></script>
 		<link rel="stylesheet" href="/style.css">
+		<link rel="stylesheet" href="/clock.css">
 		<script src="/code.js"></script>
+		<script src="/clock.js"></script>
 		<title>esp32-wifi-manager</title>
 	</head>
 	<body>
+		<div id="clock">
+			<div id="clock-wrap">
+				<div id="timezone">
+					<header>
+						<h1>Timezone</h1>
+					</header>
+					<div>
+						<h2>Current timezone is:</h2>
+						<section id="">
+							<div class="ape"><span>Asia/Singapore (UTC+08:00)</span></div>
+						</section>
+					</div>
+					<div>
+						<h2>Select Timezone</h2>
+						<section id="">
+							<div class="ape tctr">
+									<select id="timezone-select"></select>
+							</div>
+						</section>
+					</div>
+				</div>
+				<div id="color-picker">
+					<header>
+						<h1>Backlight Color</h1>
+					</header>
+					<div id="color-picker-container"></div>
+					<script>
+						colorPicker = new iro.ColorPicker('#color-picker-container');
+					</script>
+				</div>
+			</div>
+		</div>
 		<div id="app">
 			<div id="app-wrap">
 				<div id="wifi">

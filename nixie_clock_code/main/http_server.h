@@ -40,6 +40,35 @@ extern "C" {
 
 #define HTTP_SERVER_START_BIT_0	( 1 << 0 )
 
+#define isspace(r) (r == ' ' || r == '\n' || r == '\r')
+
+
+typedef struct http_header_t {
+	char* name;
+	char* value;
+}http_header_t;
+
+typedef struct http_request_t {
+	char* request;
+	http_header_t* headers;
+	int headers_count;
+	char* body;
+	int content_length;
+}http_request_t;
+
+
+typedef enum http_request_parser_state_t{
+	locating_header_name,
+	reading_header_name,
+	locating_header_value,
+	reading_header_value,
+	skip_beginning_value_spaces
+}http_request_parser_state_t;
+
+
+
+esp_err_t http_server_delete_request(http_request_t ** http_request);
+esp_err_t http_server_parse_request(http_request_t ** http_request, const char* raw, const uint16_t raw_size);
 
 void http_server(void *pvParameters);
 void http_server_netconn_serve(struct netconn *conn);

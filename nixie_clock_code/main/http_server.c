@@ -58,6 +58,7 @@ function to process requests, decode URLs, serve files, etc. etc.
 
 #include "http_server.h"
 #include "wifi_manager.h"
+#include "ws2812.h"
 
 
 //EventGroupHandle_t http_server_event_group = NULL;
@@ -148,6 +149,161 @@ char* http_server_get_header(char *request, char *header_name, int *len) {
 }
 
 
+esp_err_t http_server_delete_request(http_request_t ** http_request) {
+
+	http_request_t *req = (*http_request);
+
+	if (req->body) free(req->body);
+	if (req->request) free(req->request);
+
+	if (req->headers_count > 0) {
+		for (int i = 0; i<req->headers_count; i++) {
+			if (req->headers[i].name) free(req->headers[i].name);
+			if (req->headers[i].value) free(req->headers[i].value);
+		}
+		free(req->headers);
+	}
+
+	free(req);
+
+	http_request = NULL;
+
+	return ESP_OK;
+}
+
+esp_err_t http_server_parse_request(http_request_t ** http_request, const char* raw, const uint16_t raw_size) {
+
+	http_request_t *req = (*http_request);
+
+	req->content_length = 0;
+	req->headers_count = 0;
+	req->body = NULL;
+
+	/* save body (if any) */
+	const char body_separation_pattern[] = "\r\n\r\n";
+	const char *body_start = NULL;
+	const char *headers_start = NULL;
+	const char *raw_end = (const char*)(raw + (int)raw_size - 1);
+	body_start = strstr(raw, body_separation_pattern);
+
+
+	const char *c = raw;
+
+	/* first parse: header count and body len and snatch request while we're at it */
+	while (c != raw_end) {
+
+		if (c == body_start) {
+			/* calculate size of content len */
+			req->content_length = (int)raw_size - (int)(c - raw) - strlen(body_separation_pattern);
+			if (req->content_length > 0) {
+				req->body = (char*)malloc(sizeof(char) * (req->content_length + 1));
+				memset(req->body, 0x00, req->content_length + 1);
+				memcpy(req->body, body_start + strlen(body_separation_pattern), req->content_length);
+			}
+			break;
+		}
+		else if (*c == '\n' || *c == '\r') {
+
+			/* ignore subsequent new lines or carrier return */
+			do{
+				c++;
+				if (!(*c == '\n' || *c == '\r')) {
+					break;
+				}
+			} while (c != raw_end);
+			/* went all the way to the end of the request?? edge case for bogus requests */
+			if (c == raw_end)
+				break;
+
+			/* request line is identified as header count is currently 0 */
+			if (req->headers_count == 0) {
+				req->request = (char*)malloc(sizeof(char) * (c - raw + 1));
+				memset(req->request, 0x00, (c - raw) + 1);
+				memcpy(req->request, raw, (c - raw));
+				headers_start = c;
+			}
+
+			req->headers_count++;
+
+		}
+
+		c++;
+	}
+
+	/* allocate headers if any. */
+	if (req->headers_count) {
+		req->headers = (http_header_t*)malloc(sizeof(http_header_t) * req->headers_count);
+
+		for (int i = 0; i<req->headers_count; i++) {
+			req->headers[i].name = NULL;
+			req->headers[i].value = NULL;
+		}
+	}
+
+	/* copy each header individually */
+	if (body_start == NULL) body_start = (raw + (int)raw_size - 1);
+	c = headers_start;
+	const char* str = headers_start;
+	int current_header_index = 0;
+	http_request_parser_state_t state = locating_header_name;
+	while (c != body_start) {
+
+		switch (state) {
+			case locating_header_name:
+				if (!isspace(*c)) {
+					str = c; /* found the beginning of the header name*/
+					state = reading_header_name;
+					continue;
+				}
+				break;
+			case reading_header_name:
+				if (*c == ':') {
+					/* found the end of the header name */
+					int len = c - str;
+					if (len > 0) {
+						req->headers[current_header_index].name = (char*)malloc(sizeof(char) * len + 1);
+						memset(req->headers[current_header_index].name, 0x00, len + 1);
+						memcpy(req->headers[current_header_index].name, str, len);
+						state = locating_header_value;
+						str = c;
+					}
+					else {
+						state = locating_header_name; /* edge case, should not have a header with no length*/
+					}
+				}
+				break;
+			case locating_header_value:
+				if (!isspace(*c)) {
+					str = c; /* found the beginning of the header value */
+					state = reading_header_value;
+					continue;
+				}
+				break;
+			case reading_header_value:
+				if (*c == '\r' || *c == '\n' || c == body_start /*last header*/) {
+					/* found the end of the header value */
+					int len = c - str;
+					if (len > 0) {
+						req->headers[current_header_index].value = (char*)malloc(sizeof(char) * len + 1);
+						memset(req->headers[current_header_index].value, 0x00, len + 1);
+						memcpy(req->headers[current_header_index].value, str, len);
+						state = locating_header_name;
+						current_header_index++;
+						str = c;
+					}
+				}
+				break;
+			default:
+				break;
+		}
+
+		c++;
+
+	}
+
+	return ESP_OK;
+}
+
 void http_server_netconn_serve(struct netconn *conn) {
 
 	struct netbuf *inbuf;
@@ -155,11 +311,16 @@ void http_server_netconn_serve(struct netconn *conn) {
 	u16_t buflen;
 	err_t err;
 	const char new_line[2] = "\n";
+	http_request_t *http_request = NULL;
 
 	err = netconn_recv(conn, &inbuf);
 	if (err == ERR_OK) {
 
+		/* get raw data and parse http request */
 		netbuf_data(inbuf, (void**)&buf, &buflen);
+		http_request = (http_request_t*)malloc(sizeof(http_request_t));
+		http_server_parse_request(&http_request, buf, buflen);
+
 
 		/* extract the first line of the request */
 		char *save_ptr = buf;
@@ -276,7 +437,7 @@ void http_server_netconn_serve(struct netconn *conn) {
 					netconn_write(conn, clock_css_start, clock_css_end - clock_css_start, NETCONN_NOCOPY);
 				}
 				else if(strstr(line, "POST /color ")) {
-					ESP_LOGD(TAG, "POST /color");
+					netconn_write(conn, http_ok_json_no_cache_hdr, sizeof(http_ok_json_no_cache_hdr) - 1, NETCONN_NOCOPY); //200 ok - no cache
 
 					int lenR = 0, lenG = 0, lenB = 0;
 					int r = 0,g = 0,b = 0;
@@ -287,8 +448,9 @@ void http_server_netconn_serve(struct netconn *conn) {
 					sscanf(color_r, "%d%*s", &r);
 					sscanf(color_g, "%d%*s", &g);
 					sscanf(color_b, "%d%*s", &b);
+					rgb_t c =  ws2812_create_rgb(r, g, b);
+					ws2812_set_backlight_color(c);
 
-					ESP_LOGD(TAG, "color: {r:%d, g:%d, b:%d}", r, g, b);
 
 				}
 				else{
@@ -299,6 +461,8 @@ void http_server_netconn_serve(struct netconn *conn) {
 		else{
 			netconn_write(conn, http_404_hdr, sizeof(http_404_hdr) - 1, NETCONN_NOCOPY);
 		}
+
+		http_server_delete_request(&http_request);
 	}
 
 	/* free the buffer */

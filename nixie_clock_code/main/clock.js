@@ -8,7 +8,8 @@ function colorChangeCallback(color) {
 		dataType: 'json',
 		method: 'POST',
 		cache: false,
-		headers: { 'X-Custom-R' : color.rgb.r, 'X-Custom-G' : color.rgb.g, 'X-Custom-B' : color.rgb.b }
+		headers: { 'X-Custom-R' : color.rgb.r, 'X-Custom-G' : color.rgb.g, 'X-Custom-B' : color.rgb.b },
+		data: "hello world"
 		//data: { 'timestamp': Date.now()}
 	});
 }

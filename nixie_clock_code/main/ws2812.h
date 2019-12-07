@@ -47,8 +47,10 @@ typedef union {
 } rgb_t;
 
 extern esp_err_t ws2812_init();
-extern void ws2812_set_colors(unsigned int length, rgb_t *array);
+esp_err_t ws2812_set_backlight_color(rgb_t c);
 
+
+extern void ws2812_set_colors(unsigned int length, rgb_t *array);
 inline rgb_t ws2812_create_rgb(uint8_t r, uint8_t g, uint8_t b){
 	rgb_t v;
 

@@ -76,17 +76,20 @@ void monitoring_task(void *pvParameter)
 
 
 
+
+
 void rainbow_task(void *pvParameters)
 {
-  const uint8_t anim_step = 1;
-  const uint8_t anim_max = 16;
-  const uint8_t pixel_count = 64; // Number of your "pixels"
+  const uint8_t anim_step = 2;
+  const uint8_t anim_max = 250;
+  const uint8_t pixel_count = 6; // Number of your "pixels"
   const uint8_t delay = 25; // duration between color changes
   rgb_t color = ws2812_create_rgb(anim_max, 0, 0);
   uint8_t step = 0;
   rgb_t color2 = ws2812_create_rgb(anim_max, 0, 0);
   uint8_t step2 = 0;
   rgb_t *pixels;
+
 
 
   pixels = malloc(sizeof(rgb_t) * pixel_count);
@@ -137,7 +140,13 @@ void rainbow_task(void *pvParameters)
       }
     }
 
+
+
+    //portMUX_TYPE myMutex = portMUX_INITIALIZER_UNLOCKED;
+
+    //portENTER_CRITICAL(&myMutex);
     ws2812_set_colors(pixel_count, pixels);
+    //portEXIT_CRITICAL(&myMutex);
 
     vTaskDelay( pdMS_TO_TICKS(delay) );
   }
@@ -175,9 +184,12 @@ void app_main()
 {
 
 
-	ws2812_init();
-	xTaskCreate(rainbow_task, "ws2812 rainbow demo", 4096, NULL, 10, NULL);
-	return;
+	/* GPIO/RMT init for the WS2812 driver */
+	ESP_ERROR_CHECK(ws2812_init());
+
+
+	xTaskCreatePinnedToCore(rainbow_task, "ws2812 rainbow demo", 4096, NULL, 10, NULL, 0);
+	//return;
 
 	/* GPIO init for SPI transactions & GPIOs used to control the display */
 	ESP_ERROR_CHECK(display_init());
@@ -191,10 +203,10 @@ void app_main()
 	wifi_manager_set_callback(EVENT_STA_GOT_IP, &clock_notify_sta_got_ip);
 
 	/* clock */
-	xTaskCreate(&clock_task, "clock_task", 8192, NULL, CLOCK_TASK_PRIORITY, NULL);
+	xTaskCreatePinnedToCore(&clock_task, "clock_task", 8192, NULL, CLOCK_TASK_PRIORITY, NULL, 1);
 
 	/* your code should go here. Here we simply create a task on core 2 that monitors free heap memory */
-	xTaskCreatePinnedToCore(&monitoring_task, "monitoring_task", 2048, NULL, 1, NULL, 1);
+	//xTaskCreatePinnedToCore(&monitoring_task, "monitoring_task", 2048, NULL, 1, NULL, 1);
 
 
 }
