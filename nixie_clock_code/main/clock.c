@@ -224,7 +224,7 @@ esp_err_t clock_register_sqw_interrupt(){
 
 
 	/* install ISR service */
-	gpio_install_isr_service(ESP_INTR_FLAG_DEFAULT);
+	gpio_install_isr_service(ESP_INTR_FLAG_LEVEL2);
 	return gpio_isr_handler_add(GPIO_INPUT_IO_4, gpio_isr_handler, (void*) GPIO_INPUT_IO_4);
 }
 

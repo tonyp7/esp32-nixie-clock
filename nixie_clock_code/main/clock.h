@@ -95,9 +95,6 @@ typedef struct transition_t{
 
 
 #define GPIO_INPUT_IO_4 				4
-#define ESP_INTR_FLAG_DEFAULT 			0
-
-
 
 
 void clock_notify_sta_got_ip(void* pvArgument);
