@@ -33,6 +33,7 @@ esp_err_t display_init(){
 	memset(display_vram, 0x00, sizeof(uint16_t) * DISPLAY_DIGIT_COUNT);
 
 	gpio_set_direction(DISPLAY_SPI_CS_GPIO, GPIO_MODE_OUTPUT);
+	gpio_set_direction(DISPLAY_OE_GPIO, GPIO_MODE_OUTPUT);
 
 	spi_bus_config_t buscfg={
 		.miso_io_num=-1, /* -1 == not used */
@@ -83,6 +84,7 @@ esp_err_t display_write_vram(){
 		display_vram[i] = __bswap_16(display_vram[i]);
 	}
 
+	gpio_set_level(DISPLAY_OE_GPIO, 0);
 	gpio_set_level(DISPLAY_SPI_CS_GPIO, 0);
 	ret=spi_device_transmit(spi, &t);
 	gpio_set_level(DISPLAY_SPI_CS_GPIO, 1);
