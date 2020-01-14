@@ -16,11 +16,13 @@
 #define DISPLAY_SPI_SCLK_GPIO			14
 #define DISPLAY_OE_GPIO					27
 #define DISPLAY_HVEN_GPIO				26
+#define DEBUG_USB_POWER_ON_GPIO			17
 
 #define DISPLAY_DIGIT_COUNT				6
 
 #define DISPLAY_TOP_DOT_MASK			(uint16_t)(1<<10)
 #define DISPLAY_BOTTOM_DOT_MASK			(uint16_t)(1<<11)
+
 
 
 typedef enum display_leading_zero_t{
@@ -49,6 +51,7 @@ esp_err_t display_init();
 esp_err_t display_write_time(struct tm *time);
 uint16_t* display_get_vram();
 esp_err_t display_write_vram();
+esp_err_t display_register_usb_power_interrupt();
 
 
 

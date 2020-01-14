@@ -12,6 +12,8 @@
 #include "esp_err.h"
 #include "driver/gpio.h"
 #include "driver/spi_master.h"
+#include "driver/gpio.h"
+#include "esp_intr_alloc.h"
 
 
 #include "display.h"
@@ -23,6 +25,33 @@ static spi_transaction_t t;
 
 
 
+static void IRAM_ATTR gpio_usb_power_isr_handler(void* arg){
+
+	/* disable display when USB is on as a measure of security for the whole board. USB powering HV power supply after going through a tiny diode = bad idea */
+	gpio_set_level(DEBUG_USB_POWER_ON_GPIO, 1);
+	return;
+}
+
+
+esp_err_t display_register_usb_power_interrupt(){
+
+	/* setup DEBUG_USB_POWER_ON_GPIO as INTERRUPT on RISING EGDE */
+	gpio_config_t io_conf;
+	io_conf.intr_type = GPIO_PIN_INTR_POSEDGE;
+	/* GPIO 4 bit mask */
+	io_conf.pin_bit_mask = (1ULL << DEBUG_USB_POWER_ON_GPIO);
+	/* Input */
+	io_conf.mode = GPIO_MODE_INPUT;
+	/* Disable pu/pd as this is tied to a voltage divider from 5V rail */
+	io_conf.pull_up_en = GPIO_PULLUP_DISABLE;
+	io_conf.pull_down_en = GPIO_PULLDOWN_DISABLE;
+	gpio_config(&io_conf);
+
+	/* install ISR service */
+	gpio_install_isr_service(ESP_INTR_FLAG_LEVEL1);
+	return gpio_isr_handler_add(DEBUG_USB_POWER_ON_GPIO, gpio_usb_power_isr_handler, (void*)DEBUG_USB_POWER_ON_GPIO);
+}
+
 
 
 esp_err_t display_init(){
@@ -32,8 +61,15 @@ esp_err_t display_init(){
 	display_vram = (uint16_t*)malloc(sizeof(uint16_t) * DISPLAY_DIGIT_COUNT);
 	memset(display_vram, 0x00, sizeof(uint16_t) * DISPLAY_DIGIT_COUNT);
 
+	/* setup all GPIOs */
 	gpio_set_direction(DISPLAY_SPI_CS_GPIO, GPIO_MODE_OUTPUT);
 	gpio_set_direction(DISPLAY_OE_GPIO, GPIO_MODE_OUTPUT);
+	gpio_set_direction(DISPLAY_HVEN_GPIO, GPIO_MODE_OUTPUT);
+	gpio_set_direction(DEBUG_USB_POWER_ON_GPIO, GPIO_MODE_INPUT);
+
+	/* by default display is off but HV power supply is enabled, idling */
+	gpio_set_level(DISPLAY_OE_GPIO, 1); /* output enable is reversed logic. This effectively has no effect since the pin is physically pulled-up to 3v3 */
+	gpio_set_level(DISPLAY_HVEN_GPIO, 1);
 
 	spi_bus_config_t buscfg={
 		.miso_io_num=-1, /* -1 == not used */
@@ -59,7 +95,6 @@ esp_err_t display_init(){
 	ret=spi_bus_add_device(HSPI_HOST, &devcfg, &spi);
 	if(ret!=ESP_OK) return ret;
 
-
 	/* prepare transaction */
 	memset(&t, 0x00, sizeof(t));
 	t.length = DISPLAY_DIGIT_COUNT * 16; /* 6 digits, 16 bits per digits */
@@ -84,7 +119,13 @@ esp_err_t display_write_vram(){
 		display_vram[i] = __bswap_16(display_vram[i]);
 	}
 
-	gpio_set_level(DISPLAY_OE_GPIO, 0);
+
+	/* safe guard. Enable display only if USB is disconnected */
+	if(gpio_get_level(DEBUG_USB_POWER_ON_GPIO) == 0){
+		gpio_set_level(DISPLAY_OE_GPIO, 0);
+	}
+
+
 	gpio_set_level(DISPLAY_SPI_CS_GPIO, 0);
 	ret=spi_device_transmit(spi, &t);
 	gpio_set_level(DISPLAY_SPI_CS_GPIO, 1);
