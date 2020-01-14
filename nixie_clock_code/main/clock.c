@@ -209,7 +209,7 @@ bool clock_realign(time_t new_t){
 }
 
 
-void clock_register_sqw_interrupt(){
+esp_err_t clock_register_sqw_interrupt(){
 	/* setup GPIO 4 as INTERRUPT on RISING EGDE */
 	gpio_config_t io_conf;
 	io_conf.intr_type = GPIO_PIN_INTR_POSEDGE;
@@ -225,7 +225,7 @@ void clock_register_sqw_interrupt(){
 
 	/* install ISR service */
 	gpio_install_isr_service(ESP_INTR_FLAG_DEFAULT);
-	gpio_isr_handler_add(GPIO_INPUT_IO_4, gpio_isr_handler, (void*) GPIO_INPUT_IO_4);
+	return gpio_isr_handler_add(GPIO_INPUT_IO_4, gpio_isr_handler, (void*) GPIO_INPUT_IO_4);
 }
 
 
@@ -374,7 +374,7 @@ void clock_task(void *pvParameter){
 	ESP_ERROR_CHECK(clock_get_nvs_timezone(&clock_timezone));
 
 	/* register interrupt on the 1Hz sqw signal coming from the DS3231 */
-	clock_register_sqw_interrupt();
+	ESP_ERROR_CHECK(clock_register_sqw_interrupt());
 
 
 	clock_queue_message_t msg;
@@ -388,12 +388,12 @@ void clock_task(void *pvParameter){
 					http_client_get_api_time("Asia/Singapore");
 					break;
 				case CLOCK_MESSAGE_TICK:
-//					ESP_LOGI(TAG, "CLOCK_MESSAGE_TICK");
+					//ESP_LOGI(TAG, "CLOCK_MESSAGE_TICK");
 					if(time_set){
 						clock_tick();
 						display_write_time(clock_time_tm_ptr);
-//						strftime(strftime_buf, sizeof(strftime_buf), "%c", clock_time_tm_ptr);
-//						ESP_LOGI(TAG, "TICK! date/time is: %s", strftime_buf);
+						strftime(strftime_buf, sizeof(strftime_buf), "%c", clock_time_tm_ptr);
+						ESP_LOGI(TAG, "TICK! date/time is: %s", strftime_buf);
 					}
 					break;
 				case CLOCK_MESSAGE_REQUEST_TRANSITIONS_API_CALL:

@@ -106,7 +106,7 @@ void clock_notify_time_api_response(cJSON *json);
 void clock_notify_transitions_api_response(cJSON *json);
 void clock_tick();
 void clock_task(void *pvParameter);
-void clock_register_sqw_interrupt();
+esp_err_t clock_register_sqw_interrupt();
 
 time_t clock_get_current_time_utc();
 timezone_t clock_get_current_timezone();
