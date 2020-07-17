@@ -38,7 +38,6 @@ SOFTWARE.
 #include "esp_spi_flash.h"
 #include "esp_wifi.h"
 #include "esp_system.h"
-#include "esp_event_loop.h"
 #include "nvs_flash.h"
 #include "esp_log.h"
 #include "freertos/event_groups.h"
@@ -206,7 +205,7 @@ void app_main()
 	xTaskCreatePinnedToCore(&clock_task, "clock_task", 8192, NULL, CLOCK_TASK_PRIORITY, NULL, 1);
 
 	/* your code should go here. Here we simply create a task on core 2 that monitors free heap memory */
-	//xTaskCreatePinnedToCore(&monitoring_task, "monitoring_task", 2048, NULL, 1, NULL, 1);
+	xTaskCreatePinnedToCore(&monitoring_task, "monitoring_task", 2048, NULL, 1, NULL, 1);
 
 
 }
