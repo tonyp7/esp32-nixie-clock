@@ -199,7 +199,7 @@ void app_main()
 	wifi_manager_start();
 
 	/* register cb for internet connectivity */
-	wifi_manager_set_callback(EVENT_STA_GOT_IP, &clock_notify_sta_got_ip);
+	wifi_manager_set_callback(WM_EVENT_STA_GOT_IP, &clock_notify_sta_got_ip);
 
 	/* clock */
 	xTaskCreatePinnedToCore(&clock_task, "clock_task", 8192, NULL, CLOCK_TASK_PRIORITY, NULL, 1);
