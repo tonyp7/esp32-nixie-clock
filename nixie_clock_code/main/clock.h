@@ -93,6 +93,16 @@ typedef struct transition_t{
 	time_t timestamp;
 }transition_t;
 
+/**
+ * @brief defines a structure holding sleepmode information: which days to apply, and from what time to what time
+ */
+typedef struct sleemode_t{
+	bool enabled;
+	uint8_t days;
+	time_t from;
+	time_t to;
+}sleepmode_t;
+
 
 #define GPIO_INPUT_IO_4 				4
 
