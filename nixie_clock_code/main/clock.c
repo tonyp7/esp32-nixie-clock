@@ -349,7 +349,7 @@ void clock_task(void *pvParameter){
 	ESP_ERROR_CHECK(ds3231_enable_square_wave());
 
 	/* HTTP client is needed for the clock task */
-	http_client_init();
+	ESP_ERROR_CHECK(http_client_init());
 
 	/* get RTC time */
 	memset(&clock_time_tm, 0x00, sizeof(struct tm));
