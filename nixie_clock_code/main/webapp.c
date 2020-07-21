@@ -37,11 +37,86 @@ Contains page logic handling web app functionalities
 #include "webapp.h"
 
 
+/**
+ * @brief embedded binary data.
+ * @see file "CMakeLists.txt"
+ * @see https://docs.espressif.com/projects/esp-idf/en/latest/api-guides/build-system.html#embedding-binary-data
+ */
+extern const uint8_t clock_css_start[] asm("_binary_clock_css_start");
+extern const uint8_t clock_css_end[]   asm("_binary_clock_css_end");
+extern const uint8_t clock_js_start[] asm("_binary_clock_js_start");
+extern const uint8_t clock_js_end[] asm("_binary_clock_js_end");
+extern const uint8_t clock_html_start[] asm("_binary_clock_html_start");
+extern const uint8_t clock_html_end[] asm("_binary_clock_html_end");
+extern const uint8_t iro_js_start[] asm("_binary_iro_js_start");
+extern const uint8_t iro_js_end[] asm("_binary_iro_js_end");
+
+
+/* const httpd related values stored in ROM */
+const static char http_200_hdr[] = "200 OK";
+//const static char http_400_hdr[] = "400 Bad Request";
+//const static char http_503_hdr[] = "503 Service Unavailable";
+const static char http_content_type_html[] = "text/html";
+const static char http_content_type_js[] = "text/javascript";
+const static char http_content_type_css[] = "text/css";
+const static char http_content_type_json[] = "application/json";
+const static char http_cache_control_hdr[] = "Cache-Control";
+const static char http_cache_control_no_cache[] = "no-store, no-cache, must-revalidate, max-age=0";
+const static char http_cache_control_cache[] = "public, max-age=31536000";
+const static char http_pragma_hdr[] = "Pragma";
+const static char http_pragma_no_cache[] = "no-cache";
+
+
 static esp_err_t webapp_get_hander(httpd_req_t *req){
+
+    if(strcmp(req->uri, "/") == 0){
+
+        httpd_resp_set_status(req, http_200_hdr);
+		httpd_resp_set_type(req, http_content_type_html);
+		httpd_resp_send(req, (char*)clock_html_start, clock_html_end - clock_html_start);
+    }
+    else if(strcmp(req->uri, "/clock.js") == 0){
+
+        httpd_resp_set_status(req, http_200_hdr);
+		httpd_resp_set_type(req, http_content_type_js);
+        httpd_resp_set_hdr(req, http_cache_control_hdr, http_cache_control_cache);
+		httpd_resp_send(req, (char*)clock_js_start, clock_js_end - clock_js_start);
+    }
+    else if(strcmp(req->uri, "/iro.min.js") == 0){
+
+        httpd_resp_set_status(req, http_200_hdr);
+		httpd_resp_set_type(req, http_content_type_js);
+        httpd_resp_set_hdr(req, http_cache_control_hdr, http_cache_control_cache);
+		httpd_resp_send(req, (char*)iro_js_start, iro_js_end - iro_js_start);
+    }
+    else if(strcmp(req->uri, "/clock.css") == 0){
+
+        httpd_resp_set_status(req, http_200_hdr);
+		httpd_resp_set_type(req, http_content_type_css);
+        httpd_resp_set_hdr(req, http_cache_control_hdr, http_cache_control_cache);
+		httpd_resp_send(req, (char*)clock_css_start, clock_css_end - clock_css_start);
+    }
+    else{
+
+        httpd_resp_send_404(req);
+    }
+
     return ESP_OK;
 }
 
 static esp_err_t webapp_post_handler(httpd_req_t *req){
+
+    if(strcmp(req->uri, "/sleepmode/") == 0){
+
+        httpd_resp_set_status(req, http_200_hdr);
+        //httpd_resp_set_status(req, http_503_hdr);
+        //httpd_resp_set_status(req, http_400_hdr);
+        httpd_resp_set_type(req, http_content_type_json);
+        httpd_resp_set_hdr(req, http_cache_control_hdr, http_cache_control_no_cache);
+        httpd_resp_set_hdr(req, http_pragma_hdr, http_pragma_no_cache);
+
+    }
+
     return ESP_OK;
 }
 
