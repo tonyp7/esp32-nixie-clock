@@ -1,5 +1,5 @@
-/*
-Copyright (c) 2019 Tony Pottier
+/**
+Copyright (c) 2020 Tony Pottier
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -45,6 +45,15 @@ typedef union {
   };
   uint32_t num;
 } rgb_t;
+
+
+/**
+ * @brief defines the type of message to be sent to the queue.
+ * The WS2812 queue can only process color information for simplicity
+ */
+typedef struct ws2812_message_t {
+	rgb_t rgb;
+} ws2812_message_t;
 
 extern esp_err_t ws2812_init();
 esp_err_t ws2812_set_backlight_color(rgb_t c);
