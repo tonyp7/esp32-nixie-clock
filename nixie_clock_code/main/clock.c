@@ -74,7 +74,9 @@ time_t timestamp_local;
 time_t timestamp_transitions_check = 0;
 struct tm *clock_time_tm_ptr = NULL; /*used for localtime function which returns a static pointer */
 struct tm clock_time_tm;
-static timezone_t clock_timezone;
+
+//static timezone_t clock_timezone;
+static clock_config_t clock_config;
 
 static QueueHandle_t clock_queue = NULL;
 static bool time_set = false;
@@ -84,8 +86,22 @@ time_t clock_get_current_time_utc(){
 	return timestamp_utc;
 }
 
+
+/**
+ * @brief task the will save the config in NVS when it is safe to do so
+ */
+static void clock_save_config_task(void *pvParameter){
+	if(clock_nvs_lock( pdMS_TO_TICKS( 10000 ) )){
+		clock_save_config(&clock_config);
+		clock_nvs_unlock();
+	}
+	vTaskDelete( NULL );
+}
+
+
 timezone_t clock_get_current_timezone(){
-	return clock_timezone;
+	//return clock_timezone;
+	return clock_config.timezone;
 }
 
 void clock_notify_sta_got_ip(void *pvArgument){
@@ -150,11 +166,14 @@ void clock_transitions_shift_left(){
 }
 
 void clock_tick(){
+
+	timezone_t* clock_timezone = &(clock_config.timezone);
+
 	/* +1 second */
 	timestamp_utc++;
 
 	/* check for transitions */
-	int new_offset = clock_timezone.offset;
+	int new_offset = clock_timezone->offset;
 	while(clock_transitions[0].timestamp && (timestamp_utc >= clock_transitions[0].timestamp)){
 		/* save found offset */
 		new_offset = clock_transitions[0].offset;
@@ -164,11 +183,12 @@ void clock_tick(){
 	}
 
 	/* found a new timezone offset ? */
-	if(new_offset != clock_timezone.offset){
-		ESP_LOGI(TAG, "Saving new offset: %d vs old: %d", new_offset, clock_timezone.offset);
-		clock_timezone.offset = new_offset;
+	if(new_offset != clock_timezone->offset){
+		ESP_LOGI(TAG, "Saving new offset: %d vs old: %d", new_offset, clock_timezone->offset);
+		clock_timezone->offset = new_offset;
+
 		/* spawn low priority task that'll save the new offset in nvs memory */
-		xTaskCreate(&clock_save_timezone_task, "ck_save_tz", 4096, NULL, 2, NULL);
+		xTaskCreate(&clock_save_config_task, "ck_save_conf", 4096, NULL, 2, NULL);
 
 		/* if a transition was processed it's a good idea to force a refresh soon */
 		timestamp_transitions_check = timestamp_utc + (time_t)(60*60*24*15);
@@ -185,7 +205,7 @@ void clock_tick(){
 	}
 
 
-	timestamp_local = timestamp_utc + clock_timezone.offset;
+	timestamp_local = timestamp_utc + clock_timezone->offset;
 	clock_time_tm_ptr = localtime(&timestamp_local);
 }
 
@@ -229,6 +249,41 @@ esp_err_t clock_register_sqw_interrupt(){
 }
 
 
+esp_err_t clock_get_nvs_config(clock_config_t *conf){
+
+	nvs_handle handle;
+	esp_err_t esp_err;
+
+	esp_err = nvs_open(clock_nvs_namespace, NVS_READONLY, &handle);
+	if(esp_err == ESP_OK){
+		ESP_LOGI(TAG, "Getting config from NVS memory");
+
+		size_t sz = sizeof(clock_config_t);
+		esp_err = nvs_get_blob(handle, "conf", conf, &sz);
+		if(esp_err != ESP_OK){
+			return esp_err;
+		}
+
+		nvs_close(handle);
+	}
+	else if(esp_err == ESP_ERR_NVS_NOT_FOUND){
+		/* first time launching the program! */
+		ESP_LOGI(TAG, "Cannot find clock nvs namespace. Attempt to create it");
+		nvs_close(handle);
+
+		esp_err = nvs_open(clock_nvs_namespace, NVS_READWRITE, &handle);
+		if(esp_err == ESP_OK){
+
+			size_t sz = sizeof(timezone_t);
+			ESP_ERROR_CHECK(nvs_set_blob(handle, "conf", conf, sz));
+			ESP_ERROR_CHECK(nvs_commit(handle));
+			nvs_close(handle);
+		}
+
+	}
+
+	return esp_err;
+}
 
 esp_err_t clock_get_nvs_timezone(timezone_t *tz){
 	nvs_handle handle;
@@ -269,6 +324,8 @@ esp_err_t clock_get_nvs_timezone(timezone_t *tz){
 
 
 
+
+/*
 void clock_save_timezone_task(void *pvParameter){
 	if(clock_nvs_lock( pdMS_TO_TICKS( 10000 ) )){
 		clock_save_timezone(&clock_timezone);
@@ -276,7 +333,7 @@ void clock_save_timezone_task(void *pvParameter){
 	}
 
 	vTaskDelete( NULL );
-}
+}*/
 
 
 bool clock_nvs_lock(TickType_t xTicksToWait){
@@ -295,6 +352,36 @@ bool clock_nvs_lock(TickType_t xTicksToWait){
 }
 void clock_nvs_unlock(){
 	xSemaphoreGive( clock_nvs_mutex );
+}
+
+
+esp_err_t clock_save_config(clock_config_t *conf){
+	nvs_handle handle;
+	esp_err_t esp_err;
+
+
+	esp_err = nvs_open(clock_nvs_namespace, NVS_READWRITE, &handle);
+	if(esp_err == ESP_OK){
+
+		/* set timezone */
+		size_t sz = sizeof(clock_config_t);
+		esp_err = nvs_set_blob(handle, "conf", conf, sz);
+		if(esp_err != ESP_OK){
+			ESP_LOGE(TAG, "clock_save_config nvs_set_blob failed with error: %s", esp_err_to_name(esp_err) );
+			return esp_err;
+		}
+
+		esp_err = nvs_commit(handle);
+		if (esp_err != ESP_OK) return esp_err;
+
+		nvs_close(handle);
+
+	}
+	else{
+		ESP_LOGE(TAG, "Could not get a handle to NVS as NVS_READWRITE");
+	}
+
+	return esp_err;
 }
 
 esp_err_t clock_save_timezone(timezone_t *tz){
@@ -369,10 +456,18 @@ void clock_task(void *pvParameter){
 
 
 	/* init timezone and attempt to get what was saved in nvs */
-	clock_timezone.offset = 0;
-	strcpy(clock_timezone.name, "UTC");
-	ESP_ERROR_CHECK(clock_get_nvs_timezone(&clock_timezone));
+	//clock_timezone.offset = 0;
+	//strcpy(clock_timezone.name, "UTC");
+	//ESP_ERROR_CHECK(clock_get_nvs_timezone(&clock_timezone));
 
+	/* initialize configuration */
+	memset(&clock_config, 0x00, sizeof(clock_config));
+	clock_config.timezone.offset = 0;
+	strcpy(clock_config.timezone.name, "UTC");
+	clock_config.enable_sleepmode = false;
+	ESP_ERROR_CHECK(clock_get_nvs_config(&clock_config));
+
+	
 	/* register interrupt on the 1Hz sqw signal coming from the DS3231 */
 	ESP_ERROR_CHECK(clock_register_sqw_interrupt());
 
@@ -397,7 +492,8 @@ void clock_task(void *pvParameter){
 					}
 					break;
 				case CLOCK_MESSAGE_REQUEST_TRANSITIONS_API_CALL:
-					http_client_get_transitions(clock_timezone, timestamp_utc);
+					//http_client_get_transitions(clock_timezone, timestamp_utc);
+					http_client_get_transitions(clock_config.timezone, timestamp_utc);
 					break;
 				case CLOCK_MESSAGE_RECEIVE_TRANSITIONS_API:{
 
@@ -464,19 +560,19 @@ void clock_task(void *pvParameter){
 						cJSON *timezone = cJSON_GetObjectItemCaseSensitive(json, "timezone");
 						if(cJSON_IsObject(timezone)){
 							cJSON *timezoneString = cJSON_GetObjectItemCaseSensitive(timezone, "timezoneString");
-							if(cJSON_IsString(timezoneString) && strcmp(clock_timezone.name, timezoneString->valuestring) != 0){
+							if(cJSON_IsString(timezoneString) && strcmp(clock_config.timezone.name, timezoneString->valuestring) != 0){
 								/* realign clock_timezone */
 								updateNVS = true;
-								strcpy(clock_timezone.name, timezoneString->valuestring);
-								ESP_LOGI(TAG, "Timezone set to: %s", clock_timezone.name);
+								strcpy(clock_config.timezone.name, timezoneString->valuestring);
+								ESP_LOGI(TAG, "Timezone set to: %s", clock_config.timezone.name);
 							}
 
 							cJSON *offset = cJSON_GetObjectItemCaseSensitive(timezone, "offset");
-							if(cJSON_IsNumber(offset) && clock_timezone.offset != offset->valueint){
+							if(cJSON_IsNumber(offset) && clock_config.timezone.offset != offset->valueint){
 								/* realign offset if needed */
 								updateNVS = true;
-								clock_timezone.offset = offset->valueint;
-								ESP_LOGI(TAG, "Offset set to: %d", clock_timezone.offset);
+								clock_config.timezone.offset = offset->valueint;
+								ESP_LOGI(TAG, "Offset set to: %d", clock_config.timezone.offset);
 							}
 						}
 
@@ -486,7 +582,7 @@ void clock_task(void *pvParameter){
 
 						/* NVS needs to updated: spawn a low priority task that'll take care of it when possible */
 						if(updateNVS){
-							xTaskCreate(&clock_save_timezone_task, "ck_save_tz", 4096, NULL, 2, NULL);
+							xTaskCreate(&clock_save_config_task, "ck_save_conf", 4096, NULL, 2, NULL);
 						}
 
 						/* finally, enqueue a timezone transitions call with the set timezone */

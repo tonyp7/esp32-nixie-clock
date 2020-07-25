@@ -65,6 +65,8 @@ apply offset manually to the timestamp.
 /** number of transitions that will be stored in advance. Most timezones have 0 or 2 (summer time) so the default of 3 is plenty. */
 #define CLOCK_MAX_TRANSITIONS				3
 
+/** maximum numbers of sleepmodes a user can set */
+#define CLOCK_MAX_SLEEPMODES				4
 
 typedef enum clock_message_t{
 	CLOCK_MESSAGE_NONE = 0,
@@ -97,7 +99,7 @@ typedef struct transition_t{
 /**
  * @brief defines a structure holding sleepmode information: which days to apply, and from what time to what time
  */
-typedef struct sleemode_t{
+typedef struct sleepmode_t{
 	bool enabled;
 	uint8_t days;
 	time_t from;
@@ -105,7 +107,19 @@ typedef struct sleemode_t{
 }sleepmode_t;
 
 
+/**
+ * @brief defines a structure holding the gloabl configuration of the clock */
+typedef struct clock_config_t{
+	timezone_t timezone;
+	bool enable_sleepmode;
+	sleepmode_t sleepmode[CLOCK_MAX_SLEEPMODES];
+}clock_config_t;
+
+
 #define GPIO_INPUT_IO_4 				4
+
+
+esp_err_t clock_set_sleepmodes_from_json(char* raw);
 
 
 void clock_notify_sta_got_ip(void* pvArgument);
@@ -119,10 +133,32 @@ esp_err_t clock_register_sqw_interrupt();
 time_t clock_get_current_time_utc();
 timezone_t clock_get_current_timezone();
 
-esp_err_t clock_save_timezone(timezone_t *tz);
+
+/**
+ * @brief saves the current configuration to NVS memory
+ */
+esp_err_t clock_save_config(clock_config_t *conf);
+
+/**
+ * @brief Retrieves the configuration from NVS memory
+ */
+esp_err_t clock_get_nvs_config(clock_config_t *conf);
+
+/**
+ * Mutex lock to avoid resource sharing issues when accessing the NVS
+ */
 bool clock_nvs_lock(TickType_t xTicksToWait);
+
+/**
+ * @see clock_nvs_lock
+ */
 void clock_nvs_unlock();
-void clock_save_timezone_task(void *pvParameter);
+
+
+esp_err_t clock_save_timezone(timezone_t *tz);
+
+
+//void clock_save_timezone_task(void *pvParameter);
 
 void clock_change_timezone(timezone_t tz);
 esp_err_t clock_get_nvs_timezone(timezone_t *tz);
