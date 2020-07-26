@@ -28,12 +28,15 @@ Contains page logic handling web app functionalities
 
 #include <stdio.h>
 #include <string.h>
-#include "esp_log.h"
-#include "esp_http_server.h"
+#include <esp_log.h>
+#include <esp_system.h>
+#include <esp_http_server.h>
+#include <sys/param.h> /* for the MIN macro */
 #include "esp_err.h"
+#include "cJSON.h"
 
 #include "http_app.h"
-
+#include "ws2812.h"
 #include "webapp.h"
 
 
@@ -54,7 +57,7 @@ extern const uint8_t iro_js_end[] asm("_binary_iro_js_end");
 
 /* const httpd related values stored in ROM */
 const static char http_200_hdr[] = "200 OK";
-//const static char http_400_hdr[] = "400 Bad Request";
+const static char http_400_hdr[] = "400 Bad Request";
 //const static char http_503_hdr[] = "503 Service Unavailable";
 const static char http_content_type_html[] = "text/html";
 const static char http_content_type_js[] = "text/javascript";
@@ -65,6 +68,8 @@ const static char http_cache_control_no_cache[] = "no-store, no-cache, must-reva
 const static char http_cache_control_cache[] = "public, max-age=31536000";
 const static char http_pragma_hdr[] = "Pragma";
 const static char http_pragma_no_cache[] = "no-cache";
+
+const static char TAG[] = "webapp";
 
 
 static esp_err_t webapp_get_hander(httpd_req_t *req){
@@ -116,6 +121,89 @@ static esp_err_t webapp_post_handler(httpd_req_t *req){
         httpd_resp_set_hdr(req, http_pragma_hdr, http_pragma_no_cache);
 
     }
+    else if(strcmp(req->uri, "/backlights/") == 0){
+
+        /* read body buffer. The message should be { r: 123, g: 123, b: 123 } that is to say never more than 30 chars. */
+        const size_t buffer_size = 30;
+        char content[buffer_size];
+        esp_err_t ret = ESP_OK;
+        memset(content, 0x00, buffer_size);
+
+        /* Truncate if content length larger than the buffer */
+        size_t recv_size = MIN(req->content_len, sizeof(content));
+
+        int ret = httpd_req_recv(req, content, recv_size);
+        if (ret <= 0) {  /* 0 return value indicates connection closed */
+            /* Check if timeout occurred */
+            if (ret == HTTPD_SOCK_ERR_TIMEOUT) {
+                /* In case of timeout one can choose to retry calling
+                    * httpd_req_recv(), but to keep it simple, here we
+                    * respond with an HTTP 408 (Request Timeout) error */
+                httpd_resp_send_408(req);
+            }
+            return ESP_FAIL;
+        }
+
+
+        /* avoids a buffer overflow parsing the string if the content is bigger than the buffer size */
+        content[buffer_size - 1] = '\0';
+
+        /* parse content to json */
+        rgb_t rgb = {.num = (uint32_t)0};
+        cJSON *json = cJSON_Parse(content);
+        const cJSON *r = NULL;
+        const cJSON *g = NULL;
+        const cJSON *b = NULL;
+
+        if(json == NULL){
+
+            const char *error_ptr = cJSON_GetErrorPtr();
+            ESP_LOGE(TAG, "cJSON parsing error: %s", error_ptr);
+
+            /* bad request */
+            httpd_resp_set_status(req, http_400_hdr);
+            httpd_resp_send(req, NULL, 0);
+            return ESP_FAIL;
+
+        }
+
+        cJSON *r = cJSON_GetObjectItemCaseSensitive(json, "r");
+        cJSON *g = cJSON_GetObjectItemCaseSensitive(json, "g");
+        cJSON *b = cJSON_GetObjectItemCaseSensitive(json, "b");
+
+        if(r != NULL && g != NULL && b != NULL && cJSON_IsNumber(r) && cJSON_IsNumber(g) && cJSON_IsNumber(b)){
+
+            rgb.r = (uint8_t)r->valueint;
+            rgb.g = (uint8_t)r->valueint;
+            rgb.b = (uint8_t)r->valueint;
+
+            /* free json object */
+            cJSON_Delete(json);
+
+            ret = ws2812_set_backlight_color(rgb);
+            if(ret == ESP_OK){
+
+                httpd_resp_set_status(req, http_200_hdr);
+                httpd_resp_send(req, NULL, 0);
+                return ESP_OK;
+            }
+            else{
+                httpd_resp_send_500(req);
+                return ESP_FAIL;
+            }
+        }
+        else{
+
+            /* free json object */
+            cJSON_Delete(json);
+
+            /* bad request */
+            httpd_resp_set_status(req, http_400_hdr);
+            httpd_resp_send(req, NULL, 0);
+            return ESP_FAIL;
+        }
+
+    } /* if(strcmp(req->uri, "/backlights/") == 0) */
 
     return ESP_OK;
 }
