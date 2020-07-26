@@ -111,6 +111,7 @@ static esp_err_t webapp_get_hander(httpd_req_t *req){
 
 static esp_err_t webapp_post_handler(httpd_req_t *req){
 
+
     if(strcmp(req->uri, "/sleepmode/") == 0){
 
         httpd_resp_set_status(req, http_200_hdr);
@@ -177,8 +178,8 @@ static esp_err_t webapp_post_handler(httpd_req_t *req){
         if(r != NULL && g != NULL && b != NULL && cJSON_IsNumber(r) && cJSON_IsNumber(g) && cJSON_IsNumber(b)){
 
             rgb.r = (uint8_t)r->valueint;
-            rgb.g = (uint8_t)r->valueint;
-            rgb.b = (uint8_t)r->valueint;
+            rgb.g = (uint8_t)g->valueint;
+            rgb.b = (uint8_t)b->valueint;
 
             /* free json object */
             cJSON_Delete(json);
@@ -219,9 +220,10 @@ esp_err_t webapp_register_handlers(){
     if(ret != ESP_OK){
         return ret;
     }
+
     ret = http_app_set_handler_hook(HTTP_POST, &webapp_post_handler);
     if(ret != ESP_OK){
-        http_app_set_handler_hook(HTTP_GET, NULL);
+        http_app_set_handler_hook(HTTP_POST, NULL);
         return ret;
     }
 
