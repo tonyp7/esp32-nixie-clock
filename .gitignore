@@ -71,3 +71,4 @@ Doxyfile
 nixie_clock_code/doc/
 
 nixie_clock_code/.vscode/settings.json
+nixie_clock_code/components/update.sh
