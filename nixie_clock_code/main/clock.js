@@ -26,6 +26,8 @@ function docReady(fn) {
 	}
 }
 
+
+
 function buildDayHTML(day){
 
 	let ret = "";
@@ -63,6 +65,26 @@ function buildTime(t){
 	let minutes = Math.round((t % 3600) / 60);
 
 	return zeroPad(hours.toString(), 2) + ":" + zeroPad(minutes.toString(), 2);
+}
+
+
+async function colorChangeCallback(color) {
+
+	console.log(color.rgb);
+
+	try{
+		res = await fetch("backlights/", {
+			method: "POST",
+			headers: {
+			  "Content-Type": "application/json",
+			},
+			body: JSON.stringify(color.rgb),
+		  });
+	}
+	catch (e) {
+		console.info("error in colorChangeCallback");
+	}
+	
 }
 
 async function getSleepMode(url = "sleepmode/") {
