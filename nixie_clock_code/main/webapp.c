@@ -132,14 +132,17 @@ static esp_err_t webapp_post_handler(httpd_req_t *req){
         /* Truncate if content length larger than the buffer */
         size_t recv_size = MIN(req->content_len, sizeof(content));
 
-        int ret = httpd_req_recv(req, content, recv_size);
-        if (ret <= 0) {  /* 0 return value indicates connection closed */
+        int read_count = httpd_req_recv(req, content, recv_size);
+        if (read_count <= 0) {  /* 0 return value indicates connection closed */
             /* Check if timeout occurred */
-            if (ret == HTTPD_SOCK_ERR_TIMEOUT) {
+            if (read_count == HTTPD_SOCK_ERR_TIMEOUT) {
                 /* In case of timeout one can choose to retry calling
                     * httpd_req_recv(), but to keep it simple, here we
                     * respond with an HTTP 408 (Request Timeout) error */
                 httpd_resp_send_408(req);
+            }
+            else {
+                httpd_resp_send_500(req);
             }
             return ESP_FAIL;
         }
@@ -167,9 +170,9 @@ static esp_err_t webapp_post_handler(httpd_req_t *req){
 
         }
 
-        cJSON *r = cJSON_GetObjectItemCaseSensitive(json, "r");
-        cJSON *g = cJSON_GetObjectItemCaseSensitive(json, "g");
-        cJSON *b = cJSON_GetObjectItemCaseSensitive(json, "b");
+        r = cJSON_GetObjectItemCaseSensitive(json, "r");
+        g = cJSON_GetObjectItemCaseSensitive(json, "g");
+        b = cJSON_GetObjectItemCaseSensitive(json, "b");
 
         if(r != NULL && g != NULL && b != NULL && cJSON_IsNumber(r) && cJSON_IsNumber(g) && cJSON_IsNumber(b)){
 
