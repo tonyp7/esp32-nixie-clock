@@ -53,6 +53,7 @@ SOFTWARE.
 #include "i2c.h"
 #include "http_client.h"
 #include "display.h"
+#include "ws2812.h"
 
 
 
@@ -323,19 +324,6 @@ esp_err_t clock_get_nvs_timezone(timezone_t *tz){
 }
 
 
-
-
-/*
-void clock_save_timezone_task(void *pvParameter){
-	if(clock_nvs_lock( pdMS_TO_TICKS( 10000 ) )){
-		clock_save_timezone(&clock_timezone);
-		clock_nvs_unlock();
-	}
-
-	vTaskDelete( NULL );
-}*/
-
-
 bool clock_nvs_lock(TickType_t xTicksToWait){
 	if(clock_nvs_mutex){
 		if( xSemaphoreTake( clock_nvs_mutex, xTicksToWait ) == pdTRUE ) {
@@ -467,10 +455,8 @@ void clock_task(void *pvParameter){
 	clock_config.enable_sleepmode = false;
 	ESP_ERROR_CHECK(clock_get_nvs_config(&clock_config));
 
-	
 	/* register interrupt on the 1Hz sqw signal coming from the DS3231 */
 	ESP_ERROR_CHECK(clock_register_sqw_interrupt());
-
 
 	clock_queue_message_t msg;
 
