@@ -31,23 +31,26 @@ This is based of FozzTexx's public domain code on WS2812
 
 */
 
+#include <string.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <math.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
+#include <freertos/queue.h>
+#include <freertos/task.h>
 #include <soc/rmt_struct.h>
 #include <soc/dport_reg.h>
 #include <driver/gpio.h>
 #include <soc/gpio_sig_map.h>
-#include <esp_intr.h>
-#include <string.h>
-#include <stdio.h>
-#include <stdlib.h>
+#include <esp_intr_alloc.h>
 #include <driver/rmt.h>
-#include <math.h>
 #include "esp_log.h"
+
 
 #include "ws2812.h"
 
-#define ETS_RMT_CTRL_INUM	18
+#define ETS_RMT_CTRL_INUM		18
 #define ESP_RMT_CTRL_DISABLE	ESP_RMT_CTRL_DIABLE /* Typo in esp_intr.h */
 
 #define DIVIDER		4 /* Above 4, timings start to deviate*/
@@ -63,6 +66,8 @@ This is based of FozzTexx's public domain code on WS2812
 #define MAX_PULSES						32
 
 #define WS2812_RMT_CHANNEL				0
+
+#define WS2812_QUEUE_SIZE				3
 
 typedef union {
   struct {
@@ -83,12 +88,39 @@ static SemaphoreHandle_t ws2812_mutex = NULL;
 
 static const char TAG[] = "ws2812";
 
+QueueHandle_t ws2812_queue = NULL; 
+
 /* the actual array holding the values of each backlight pixel */
 static rgb_t *ws2812_pixels = NULL;
 
 float clamp(float d, float min, float max) {
 	const float t = d < min ? min : d;
 	return t > max ? max : t;
+}
+
+/**
+ * @brief RTOS task processing backlight color changes
+ */
+static void ws2812_task(void *pvParameters)
+{
+	ws2812_message_t msg;
+	const uint8_t pixel_count = WS2812_STRIP_SIZE;
+	rgb_t *pixels = malloc(sizeof(rgb_t) * pixel_count);
+	
+
+	for(;;) {
+		if(xQueueReceive(ws2812_queue, &msg, portMAX_DELAY)) {
+
+			ESP_LOGI(TAG, "Received R:%d G:%d B:%d", msg.rgb.r, msg.rgb.g, msg.rgb.b);
+
+			for (uint8_t i = 0; i < pixel_count; i++) {
+				pixels[i] = msg.rgb;
+			}
+
+			ws2812_set_colors(pixel_count, pixels);
+		}
+	}
+
 }
 
 
@@ -109,22 +141,17 @@ float exp_step(float x, float k, float n){
 
 esp_err_t ws2812_set_backlight_color(rgb_t c){
 
-	if( xSemaphoreTake( ws2812_mutex, 1 ) == pdTRUE ) {
-		for(uint8_t i = 0; i < WS2812_STRIP_SIZE; i++){
-			ws2812_pixels[i] = c;
-		}
+	ws2812_message_t msg;
+	msg.rgb = c;
 
-		ws2812_set_colors(WS2812_STRIP_SIZE, ws2812_pixels);
+	BaseType_t ret = xQueueSend( ws2812_queue, &msg, pdMS_TO_TICKS(1000) );
 
-		//xSemaphoreGive(ws2812_mutex);
+	if(ret == pdTRUE){
 		return ESP_OK;
 	}
 	else{
-		ESP_LOGE(TAG, "ws2812_set_backlight_color cannot get mutex");
-		return ESP_ERR_INVALID_STATE;
+		return ESP_FAIL; /* ret could be errQUEUE_FULL */
 	}
-
-
 
 }
 
@@ -134,29 +161,32 @@ esp_err_t ws2812_set_backlight_color(rgb_t c){
  * This is useful in cases where a threshold function with a smooth transition is desired.
  */
 float smoothstep(const float edge0, const float edge1, const float x){
-	const float t = clamp((x - edge0) / (edge1 - edge0), 0.0, 1.0);
-	return t * t * (3.0 - 2.0 * t);
+	const float t = clamp((x - edge0) / (edge1 - edge0), 0.0f, 1.0f);
+	return t * t * (3.0f - 2.0f * t);
 }
 
 
+/**
+ * @brief initialize the RMT channel to be suitable to control a WS2812 LED
+ */
 void ws2812_init_rmt_channel(int rmt_channel)
 {
-  RMT.apb_conf.fifo_mask = 1;  //enable memory access, instead of FIFO mode.
-  RMT.apb_conf.mem_tx_wrap_en = 1; //wrap around when hitting end of buffer
-  RMT.conf_ch[rmt_channel].conf0.div_cnt = DIVIDER;
-  RMT.conf_ch[rmt_channel].conf0.mem_size = 1;
-  RMT.conf_ch[rmt_channel].conf0.carrier_en = 0;
-  RMT.conf_ch[rmt_channel].conf0.carrier_out_lv = 1;
-  RMT.conf_ch[rmt_channel].conf0.mem_pd = 0;
+	RMT.apb_conf.fifo_mask = 1;  /* enable memory access, instead of FIFO mode. */
+	RMT.apb_conf.mem_tx_wrap_en = 1; /* wrap around when hitting end of buffer */
+	RMT.conf_ch[rmt_channel].conf0.div_cnt = DIVIDER;
+	RMT.conf_ch[rmt_channel].conf0.mem_size = 1;
+	RMT.conf_ch[rmt_channel].conf0.carrier_en = 0;
+	RMT.conf_ch[rmt_channel].conf0.carrier_out_lv = 1;
+	RMT.conf_ch[rmt_channel].conf0.mem_pd = 0;
 
-  RMT.conf_ch[rmt_channel].conf1.rx_en = 0;
-  RMT.conf_ch[rmt_channel].conf1.mem_owner = 0;
-  RMT.conf_ch[rmt_channel].conf1.tx_conti_mode = 0;    /* loop back mode */
-  RMT.conf_ch[rmt_channel].conf1.ref_always_on = 1;    /* use APB 80Mhz clock */
-  RMT.conf_ch[rmt_channel].conf1.idle_out_en = 1;
-  RMT.conf_ch[rmt_channel].conf1.idle_out_lv = 0;
+	RMT.conf_ch[rmt_channel].conf1.rx_en = 0;
+	RMT.conf_ch[rmt_channel].conf1.mem_owner = 0;
+	RMT.conf_ch[rmt_channel].conf1.tx_conti_mode = 0;    /* loop back mode */
+	RMT.conf_ch[rmt_channel].conf1.ref_always_on = 1;    /* use APB 80Mhz clock */
+	RMT.conf_ch[rmt_channel].conf1.idle_out_en = 1;
+	RMT.conf_ch[rmt_channel].conf1.idle_out_lv = 0;
 
-  return;
+	return;
 }
 
 void ws2812_copy()
@@ -240,7 +270,21 @@ esp_err_t ws2812_init(){
 	/* allocate memory for the pixels */
 	ws2812_pixels = (rgb_t*)malloc(sizeof(rgb_t) * WS2812_STRIP_SIZE);
 
-	return esp_intr_alloc(ETS_RMT_INTR_SOURCE, 0, ws2812_handle_interrupt, NULL, &rmt_intr_handle);
+
+	ret = esp_intr_alloc(ETS_RMT_INTR_SOURCE, 0, ws2812_handle_interrupt, NULL, &rmt_intr_handle);
+
+	/* create the queue */
+	ws2812_queue = xQueueCreate(WS2812_QUEUE_SIZE, sizeof(ws2812_message_t));
+	if(ws2812_queue == NULL){
+		return ESP_ERR_NO_MEM;
+	}
+
+	if(ret == ESP_OK){
+		/* spawn the task that will handle the LED backlights */
+		xTaskCreatePinnedToCore(ws2812_task, "ws2812_task", 4096, NULL, 10, NULL, 0);
+	}
+
+	return ret;
 
 }
 

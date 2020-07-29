@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8"/>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+		<meta name="apple-mobile-web-app-capable" content="yes" />
+		<link rel="stylesheet" href="clock.css">
+        <script async src="clock.js"></script>
+        <script src="iro.min.js"></script>
+		<title>Nixie Clock</title>
+	</head>
+	<body>
+		<div id="clock">
+			<div id="clock-wrap">
+				<div id="timezone">
+					<header>
+						<h1>Timezone</h1>
+					</header>
+					<div>
+						<h2>Current timezone is:</h2>
+						<section id="">
+							<div class="ape"><span>Asia/Singapore (UTC+08:00)</span></div>
+						</section>
+					</div>
+					<div>
+						<h2>Select Timezone</h2>
+						<section id="">
+							<div class="ape tctr">
+									<select id="timezone-select"></select>
+							</div>
+						</section>
+					</div>
+				</div>
+				<div id="color-picker">
+					<header>
+						<h1>Backlight Color</h1>
+					</header>
+					<div id="color-picker-container" style="display:flex;justify-content:center;align-items:center;"></div>
+					<script>
+						var colorPicker = new iro.ColorPicker('#color-picker-container');
+						colorPicker.on("color:change", colorChangeCallback);
+					</script>
+                </div>
+                <div id="sleepmode">
+                    <header>
+                        <h1>Sleep Mode</h1>
+                    </header>
+
+                    <div>
+                        <h2><input type="checkbox" id="sleepmode-enable"> Enable sleep mode</h2>
+                        <section id="sleepmodes">
+							<div id="sm0" class="ape brdb">
+							</div>
+							<div id="sm1" class="ape brdb">
+							</div>
+							<div id="sm2" class="ape brdb">
+							</div>
+							<div id="sm3" class="ape brdb">
+							</div>
+                            <div id="sm4" class="ape tctr">
+                                Add Sleep Mode
+                            </div>
+                        </section>
+                    </div>
+                    
+				</div>
+			</div>
+			<div id="diag-sleepmode" class="diag-box">
+				<div class="diag-box-win">
+					<p id="diag-data">
+						<input id="Mo" type="checkbox"><label for="Mo">Mo</label><input id="Tu" type="checkbox"><label for="Tu">Tu</label><input id="We" type="checkbox"><label for="We">We</label><input id="Th" type="checkbox"><label for="Th">Th</label><input id="Fr" type="checkbox"><label for="Fr">Fr</label><input id="Sa" type="checkbox"><label for="Sa">Sa</label><input id="Su" type="checkbox"><label for="Su">Su</label>
+					</p>
+					<p>
+						From:<input type="time" id="time-from">
+						To:<input type="time" id="time-to">
+					</p>
+					<div class="buttons">
+						<input id="cancel-sleepmode" type="button" value="Cancel" />
+						<input id="del-sleepmode" type="button" value="Delete" />
+						<input id="ok-sleepmode" type="button" value="Ok" />
+					</div>
+				</div>
+			</div>
+		</div>
+    </body>
+</html>

@@ -48,8 +48,8 @@ static const char *HTTP_CLIENT_TIME_API_URL = "https://api.mclk.org/time";
 static const char *HTTP_CLIENT_TRANSITIONS_API_URL = "https://api.mclk.org/transitions";
 
 
-/** @brief for the sake of simplicity you can only do one HTTP request at a time; strictly enforced by this mutex */
-static SemaphoreHandle_t http_client_mutex = NULL;
+
+static QueueHandle_t http_client_queue = NULL;
 
 /* used to keep track of request bodies that eventually need to be freed */
 static char *http_client_body_str = NULL;
@@ -60,25 +60,6 @@ static char *http_client_response_str = NULL;
 static esp_http_client_handle_t http_client_handle = NULL;
 
 
-bool http_client_lock(TickType_t xTicksToWait){
-	if(http_client_mutex){
-		if( xSemaphoreTake( http_client_mutex, xTicksToWait ) == pdTRUE ) {
-			return true;
-		}
-		else{
-			return false;
-		}
-	}
-	else{
-		return false;
-	}
-
-}
-void http_client_unlock(){
-	xSemaphoreGive( http_client_mutex );
-}
-
-
 
 
 void http_client_process_data(esp_http_client_event_t *evt){
@@ -86,7 +67,6 @@ void http_client_process_data(esp_http_client_event_t *evt){
 
 		/* process json answer */
 		if(http_client_response_str){
-			/*ESP_LOGI(TAG, "%s", http_client_response_str);*/
 			cJSON *json = cJSON_Parse(http_client_response_str);
 			clock_notify_time_api_response(json);
 		}
@@ -96,11 +76,28 @@ void http_client_process_data(esp_http_client_event_t *evt){
 
 		/* process json answer */
 		if(http_client_response_str){
-			/*ESP_LOGI(TAG, "%s", http_client_response_str);*/
 			cJSON *json = cJSON_Parse(http_client_response_str);
 			clock_notify_transitions_api_response(json);
 		}
 	}
+}
+
+
+
+
+void http_client_cleanup(esp_http_client_handle_t client){
+
+	if(http_client_body_str){
+		free(http_client_body_str);
+		http_client_body_str = NULL;
+	}
+
+	if(http_client_response_str){
+		free(http_client_response_str);
+		http_client_response_str = NULL;
+	}
+
+	esp_http_client_cleanup(client);
 }
 
 static esp_err_t _http_event_handler(esp_http_client_event_t *evt){
@@ -139,27 +136,14 @@ static esp_err_t _http_event_handler(esp_http_client_event_t *evt){
 			case HTTP_EVENT_ON_FINISH:
 				ESP_LOGI(TAG, "HTTP_EVENT_ON_FINISH");
 				http_client_process_data(evt);
-				//http_client_cleanup(evt->client);
-				//http_client_unlock();
 				break;
 			case HTTP_EVENT_DISCONNECTED:
 				ESP_LOGI(TAG, "HTTP_EVENT_DISCONNECTED");
 				break;
 		}
 
-
     return ESP_OK;
 }
-
-void http_client_init(){
-
-	if(http_client_mutex == NULL){
-		http_client_mutex = xSemaphoreCreateMutex();
-	}
-
-
-}
-
 
 
 static void http_client_api_time_task(void *pvParameter){
@@ -214,54 +198,8 @@ static void http_client_api_time_task(void *pvParameter){
 	}
 
 	http_client_cleanup(http_client_handle);
-	http_client_unlock();
-
-	vTaskDelete( NULL );
-}
-
-static void http_client_task(void *pvParameter){
-
-	esp_err_t err;
-
-	for(;;) {
-		err = esp_http_client_perform(http_client_handle);
-		if (err != ESP_ERR_HTTP_EAGAIN) {
-			break;
-		}
-		taskYIELD();
-	}
-	if (err == ESP_OK) {
-		ESP_LOGI(TAG, "HTTPS Status = %d, content_length = %d",
-				esp_http_client_get_status_code(http_client_handle),
-				esp_http_client_get_content_length(http_client_handle));
-	}
-	else {
-		ESP_LOGE(TAG, "Error perform http request %s", esp_err_to_name(err));
-	}
-	vTaskDelete( NULL );
 
 }
-
-
-
-void http_client_cleanup(esp_http_client_handle_t client){
-
-	if(http_client_body_str){
-		free(http_client_body_str);
-		http_client_body_str = NULL;
-	}
-
-	if(http_client_response_str){
-		free(http_client_response_str);
-		http_client_response_str = NULL;
-	}
-
-	esp_http_client_cleanup(client);
-}
-
-
-
-
 
 
 static void http_client_api_transitions_task(void *pvParameter){
@@ -330,173 +268,60 @@ static void http_client_api_transitions_task(void *pvParameter){
 			ESP_LOGE(TAG, "Error perform http request %s", esp_err_to_name(err));
 		}
 
-
 		http_client_cleanup(http_client_handle);
-		http_client_unlock();
 	}
-
-
-	vTaskDelete( NULL );
 }
+
+
+/**
+ * @brief freeRTOS task that processes URL requests. 
+ * 
+ * Because this is processed in a queue, it ensures only one call at a time can be made
+ */
+static void http_client_task(void *pvParameter){
+
+	clock_queue_message_t msg;
+
+	for(;;) {
+		if(xQueueReceive(http_client_queue, &msg, portMAX_DELAY)) {
+
+			switch(msg.message){
+
+				case CLOCK_MESSAGE_REQUEST_TIME_API:
+					http_client_api_time_task( msg.param );
+					break;
+
+				case CLOCK_MESSAGE_REQUEST_TRANSITIONS_API_CALL:
+					http_client_api_transitions_task( NULL );
+					break;
+
+				default:
+					break;
+			}
+		}	
+	}
+}
+
+
+esp_err_t http_client_init(){
+	http_client_queue = xQueueCreate(10, sizeof(clock_queue_message_t));
+	xTaskCreatePinnedToCore(&http_client_task, "http_client_task", 16384, NULL, CLOCK_TASK_PRIORITY-1, NULL, 1);
+	return ESP_OK;
+}
+
 
 void http_client_get_transitions(timezone_t timezone, time_t now){
-
-
-	if(http_client_lock( pdMS_TO_TICKS( 60000 ) )){
-		/* spawn a low priorty task that will take care of the request asynchronously */
-		xTaskCreate(&http_client_api_transitions_task, "http_transitions", 8192, NULL, 2, NULL);
-	}
-	else{
-		ESP_LOGE(TAG, "Failed to acquire HTTP client mutex");
-	}
-
-
-//	if(http_client_lock( pdMS_TO_TICKS(5000) )){
-//
-//
-//
-//		esp_http_client_config_t config = {
-//				.url = HTTP_CLIENT_TRANSITIONS_API_URL,
-//				.event_handler = _http_event_handler,
-//				.is_async = true,
-//				.timeout_ms = 10000,
-//				.user_data = (void*)HTTP_CLIENT_TRANSITIONS_API_URL
-//		};
-//		http_client_handle = esp_http_client_init(&config);
-//
-//
-//		if(timezone.name != NULL){
-//			cJSON *body = NULL;
-//			cJSON *tz = NULL;
-//			cJSON *from = NULL;
-//			cJSON *to = NULL;
-//
-//			char* body_str = NULL;
-//
-//			/* generate the request body */
-//			body = cJSON_CreateObject();
-//
-//			/* timezone */
-//			tz = cJSON_CreateString(timezone.name);
-//			cJSON_AddItemToObject(body, "timezone", tz);
-//
-//			/* from */
-//			time_t from_time = now - 60*60*24 ; /* -1 day back to avoid some weird edge cases by getting transitions strictly on now timestamp */
-//			from = cJSON_CreateNumber(from_time);
-//			cJSON_AddItemToObject(body, "from", from);
-//
-//			/* to */
-//			time_t to_time = now + 60*60*24*365; /* +1 year */
-//			to = cJSON_CreateNumber(to_time);
-//			cJSON_AddItemToObject(body, "to", to);
-//
-//
-//			/* transform to json string then clean up cJSON object */
-//			body_str = cJSON_Print(body);
-//			cJSON_Delete(body);
-//
-//			/* save pointer for later cleanup */
-//			http_client_body_str = body_str;
-//
-//			/* set body */
-//			esp_http_client_set_post_field(http_client_handle, body_str, strlen(body_str));
-//
-//			/* spawn low priority task that'll perform the request */
-//			//xTaskCreate(&http_client_task, "http_transitions", 8192, (void*)http_client_handle, 2, NULL);
-//			esp_err_t err;
-//			esp_http_client_handle_t client = http_client_handle;
-//			for(;;) {
-//					err = esp_http_client_perform(client);
-//					if (err != ESP_ERR_HTTP_EAGAIN) {
-//						break;
-//					}
-//				}
-//				if (err == ESP_OK) {
-//					ESP_LOGI(TAG, "HTTPS Status = %d, content_length = %d",
-//							esp_http_client_get_status_code(client),
-//							esp_http_client_get_content_length(client));
-//				}
-//				else {
-//					ESP_LOGE(TAG, "Error perform http request %s", esp_err_to_name(err));
-//				}
-//		}
-//
-//
-//
-//	}
-//	else{
-//		ESP_LOGE(TAG, "Failed to acquire HTTP client mutex");
-//	}
+	clock_queue_message_t msg;
+	msg.message = CLOCK_MESSAGE_REQUEST_TRANSITIONS_API_CALL;
+	msg.param = NULL;
+	xQueueSend(http_client_queue, &msg, portMAX_DELAY);
 }
-
-
-
-
 
 
 void http_client_get_api_time(char* timezone){
-
-
-	if(http_client_lock( pdMS_TO_TICKS( 60000 ) )){
-
-
-
-
-
-		xTaskCreate(&http_client_api_time_task, "http_time", 8192, (void*)timezone, 2, NULL);
-
-//		esp_http_client_config_t config = {
-//				.url = HTTP_CLIENT_TIME_API_URL,
-//				.event_handler = _http_event_handler,
-//				.is_async = true,
-//				.timeout_ms = 10000,
-//				.user_data = (void*)HTTP_CLIENT_TIME_API_URL
-//		};
-//		http_client_handle = esp_http_client_init(&config);
-//
-//
-//		if(timezone != NULL){
-//			cJSON *body = NULL;
-//			cJSON *tz = NULL;
-//			char* body_str = NULL;
-//
-//			/* generate the request body */
-//			body = cJSON_CreateObject();
-//			tz = cJSON_CreateString(timezone);
-//			cJSON_AddItemToObject(body, "timezone", tz);
-//			body_str = cJSON_Print(body);
-//			cJSON_Delete(body);
-//
-//			/* save pointer for later cleanup */
-//			http_client_body_str = body_str;
-//
-//			/* set body */
-//			esp_http_client_set_post_field(http_client_handle, body_str, strlen(body_str));
-//		}
-//
-//		xTaskCreate(&http_client_task, "http_time", 8192, (void*)http_client_handle, 2, NULL);
-//		esp_err_t err;
-//		esp_http_client_handle_t client = http_client_handle;
-//		for(;;) {
-//				err = esp_http_client_perform(client);
-//				if (err != ESP_ERR_HTTP_EAGAIN) {
-//					break;
-//				}
-//			}
-//			if (err == ESP_OK) {
-//				ESP_LOGI(TAG, "HTTPS Status = %d, content_length = %d",
-//						esp_http_client_get_status_code(client),
-//						esp_http_client_get_content_length(client));
-//			}
-//			else {
-//				ESP_LOGE(TAG, "Error perform http request %s", esp_err_to_name(err));
-//			}
-
-	}
-	else{
-		 ESP_LOGE(TAG, "Failed to acquire HTTP client mutex");
-	}
-
+	clock_queue_message_t msg;
+	msg.message = CLOCK_MESSAGE_REQUEST_TIME_API;
+	msg.param = (void*)timezone;
+	xQueueSend(http_client_queue, &msg, portMAX_DELAY);
 }
-
 

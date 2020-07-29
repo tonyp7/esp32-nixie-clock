@@ -1,5 +1,5 @@
-/*
-Copyright (c) 2019 Tony Pottier
+/**
+Copyright (c) 2020 Tony Pottier
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -19,23 +19,18 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-@file http_client.h
+@file webapp.h
 @author Tony Pottier
 
-Contains wrappers around the esp http client for the mclk.org time API.
+Contains page logic handling web app functionalities
 
 */
-#ifndef MAIN_INCLUDE_HTTP_CLIENT_H_
-#define MAIN_INCLUDE_HTTP_CLIENT_H_
 
-#define HTTP_CLIENT_MAX_REQUEST_SIZE	256
+#ifndef CLOCK_WEBAPP_H_
+#define CLOCK_WEBAPP_H_
 
-esp_err_t http_client_init();
-void http_client_cleanup(esp_http_client_handle_t client);
-void http_client_get_api_time(char* timezone);
-void http_client_get_transitions(timezone_t timezone, time_t now);
-void http_rest();
-//void http_client_task(void *pvParameter);
+#include "esp_err.h"
 
+esp_err_t webapp_register_handlers();
 
-#endif /* MAIN_INCLUDE_HTTP_CLIENT_H_ */
+#endif

@@ -1,5 +1,5 @@
-/*
-Copyright (c) 2019 Tony Pottier
+/**
+Copyright (c) 2020 Tony Pottier
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -39,6 +39,10 @@ This is based of FozzTexx's public domain code on WS2812
 #define WS2818_DATA_GPIO		23
 #define WS2812_STRIP_SIZE		6
 
+
+/**
+ * structure holding a RGB 24 bit colors information in a 32 bit int
+ */
 typedef union {
   struct __attribute__ ((packed)) {
     uint8_t r, g, b;
@@ -46,11 +50,22 @@ typedef union {
   uint32_t num;
 } rgb_t;
 
-extern esp_err_t ws2812_init();
-esp_err_t ws2812_set_backlight_color(rgb_t c);
+
+/**
+ * @brief defines the type of message to be sent to the queue.
+ * The WS2812 queue can only process color information for simplicity
+ */
+typedef struct ws2812_message_t {
+	rgb_t rgb;
+} ws2812_message_t;
+
+esp_err_t ws2812_init();
 
 
-extern void ws2812_set_colors(unsigned int length, rgb_t *array);
+
+/**
+ * @brief Helper to generate a rgb_t based on r, g, b parameters
+ */
 inline rgb_t ws2812_create_rgb(uint8_t r, uint8_t g, uint8_t b){
 	rgb_t v;
 
@@ -59,6 +74,23 @@ inline rgb_t ws2812_create_rgb(uint8_t r, uint8_t g, uint8_t b){
 	v.b = b;
 	return v;
 }
+
+/**
+ * @brief Sends the message to the ws2812 queue to process a color change
+ * @return ESP_OK if success, ESP_FAIL if the queue was full or any other error
+ */
+esp_err_t ws2812_set_backlight_color(rgb_t c);
+
+/**
+ * @brief helper for ws2812_set_backlight_color
+ * @see ws2812_set_backlight_color
+ */
+inline esp_err_t ws2812_set_backlight_color_rgb(uint8_t r, uint8_t g, uint8_t b){
+	return ws2812_set_backlight_color(ws2812_create_rgb(r, g, b));
+}
+
+
+void ws2812_set_colors(unsigned int length, rgb_t *array);
 
 
 

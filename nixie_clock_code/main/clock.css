@@ -11,3 +11,142 @@ select {
 	border:none;
 	width:300px;
 }
+
+body {
+    background-color: #eee;
+    border: 0;
+    margin: 0;
+    font: 1.1em tahoma, arial, sans-serif;
+}
+a {
+    color: darkblue;
+    transition: color .2s ease-out;
+    text-decoration: none
+}
+a:hover {
+    color: red;
+}
+input {
+    display: none;
+    font: 1.1em tahoma, arial, sans-serif;
+}
+input:focus,
+select:focus,
+textarea:focus,
+button:focus {
+    outline: none;
+}
+input[type="button"] {
+    width: 100px;
+    padding: 5px;
+    text-align: center;
+    display: block;
+}
+
+input[type="time"]{
+    display: inline;
+}
+
+input[type="checkbox"]{
+    display: inline;
+}
+
+p {
+    padding: 10px;
+}
+
+.diag-box {
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    right: 0;
+    height: 100%;
+    width: 100%;
+    display: none;
+}
+.diag-box-win {
+    position: absolute;
+    left: 5%;
+    width: 90%;
+    text-align: center;
+    border: 2px outset #888;
+    background-color: #fff;
+    border-radius: 10px;
+    top: 20%;
+}
+.blur {
+    -webkit-filter: blur(2px);
+    -moz-filter: blur(2px);
+    -ms-filter: blur(2px);
+    -o-filter: blur(2px);
+    filter: blur(2px);
+}
+.ape {
+    margin-left: 20px;
+    padding: 10px 0px 10px 10px;
+}
+.ape:hover {
+    cursor: pointer;
+}
+.brdb {
+    border-bottom: 1px solid #888;
+}
+header {
+    background-color: #fff;
+    border-bottom: 1px solid #888;
+}
+section {
+    background-color: #fff;
+    border-bottom: 1px solid #888;
+    border-top: 1px solid #888;
+}
+h1 {
+    display: block;
+    text-align: center;
+    margin: 0;
+    padding: 15px;
+    font-size: 1.4em
+}
+h2 {
+    margin: 0;
+    margin-top: 20px;
+    padding: 10px;
+    text-transform: uppercase;
+    color: #888;
+    font-size: 1.0em
+}
+h3 {
+    margin: 0;
+    text-align: center;
+    padding: 20px 0px 20px 0px;
+}
+.gr {
+    color: green;
+}
+.rd {
+    color: red;
+}
+
+.buttons {
+    padding: 15px;
+    display:flex;
+    justify-content:space-evenly;
+}
+
+.ctr {
+    margin: 0 auto;
+}
+.tctr {
+    text-align: center;
+}
+
+.fr {
+    float: right;
+    margin-right: 20px;
+}
+
+#diag-sleepmode {
+    display: none;
+}
+
