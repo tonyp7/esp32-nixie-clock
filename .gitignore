@@ -65,6 +65,8 @@ nixie_clock_code/build/aws_iot/
 nixie_clock_code/.cproject
 nixie_clock_code/.project
 nixie_clock_code/sdkconfig*
+nixie_clock_code/main/build/
+nixie_clock_code/main/build/*
 
 #doxygen
 Doxyfile
