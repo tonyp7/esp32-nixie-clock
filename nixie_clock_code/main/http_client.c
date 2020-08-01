@@ -187,6 +187,7 @@ static void http_client_api_time_task(void *pvParameter){
 		if (err != ESP_ERR_HTTP_EAGAIN) {
 			break;
 		}
+		vTaskDelay( pdMS_TO_TICKS(10) ); /* avoid watchdog trigger */
 	}
 	if (err == ESP_OK) {
 		ESP_LOGI(TAG, "HTTPS Status = %d, content_length = %d",
@@ -258,6 +259,7 @@ static void http_client_api_transitions_task(void *pvParameter){
 			if (err != ESP_ERR_HTTP_EAGAIN) {
 				break;
 			}
+			vTaskDelay( pdMS_TO_TICKS(10) ); /* avoid watchdog trigger */
 		}
 		if (err == ESP_OK) {
 			ESP_LOGI(TAG, "HTTPS Status = %d, content_length = %d",
