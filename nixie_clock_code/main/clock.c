@@ -324,6 +324,16 @@ esp_err_t clock_get_nvs_timezone(timezone_t *tz){
 }
 
 
+
+void clock_notify_new_sleepmodes(sleepmodes_t sleepmodes){
+	
+}
+
+clock_config_t clock_get_config(){
+	clock_config_t conf = clock_config;
+	return conf;
+}
+
 bool clock_nvs_lock(TickType_t xTicksToWait){
 	if(clock_nvs_mutex){
 		if( xSemaphoreTake( clock_nvs_mutex, xTicksToWait ) == pdTRUE ) {
@@ -452,7 +462,7 @@ void clock_task(void *pvParameter){
 	memset(&clock_config, 0x00, sizeof(clock_config));
 	clock_config.timezone.offset = 0;
 	strcpy(clock_config.timezone.name, "UTC");
-	clock_config.enable_sleepmode = false;
+	clock_config.sleepmodes.enable_sleepmode = false;
 	ESP_ERROR_CHECK(clock_get_nvs_config(&clock_config));
 
 	/* register interrupt on the 1Hz sqw signal coming from the DS3231 */
@@ -497,16 +507,16 @@ void clock_task(void *pvParameter){
 							int i=0;
 							cJSON_ArrayForEach(transition, transitions){
 								if(transition){
-									cJSON *transitionUnixEpoch = cJSON_GetObjectItemCaseSensitive(transition, "transitionUnixEpoch");
+									cJSON *transitionTimestamp = cJSON_GetObjectItemCaseSensitive(transition, "transitionTimestamp");
 									cJSON *toOffset = cJSON_GetObjectItemCaseSensitive(transition, "toOffset");
 
-									if (transitionUnixEpoch && toOffset && cJSON_IsNumber(transitionUnixEpoch) && cJSON_IsNumber(toOffset)){
+									if (transitionTimestamp && toOffset && cJSON_IsNumber(transitionTimestamp) && cJSON_IsNumber(toOffset)){
 
 										/* overflow protection */
 										if(!(i >= CLOCK_MAX_TRANSITIONS)){
 											/* add transitions */
 											clock_transitions[i].offset = toOffset->valueint;
-											clock_transitions[i].timestamp = (time_t)transitionUnixEpoch->valuedouble;
+											clock_transitions[i].timestamp = (time_t)transitionTimestamp->valuedouble;
 											i++;
 										}
 									}
@@ -535,9 +545,9 @@ void clock_task(void *pvParameter){
 						ESP_LOGI(TAG, "%s", json_str);
 
 						/* extract time from json, and set it if necessary */
-						cJSON *unixEpoch = cJSON_GetObjectItemCaseSensitive(json, "unixEpoch");
-						if(cJSON_IsNumber(unixEpoch)){
-							time_t t = unixEpoch->valueint;
+						cJSON *timestamp = cJSON_GetObjectItemCaseSensitive(json, "timestamp");
+						if(cJSON_IsNumber(timestamp)){
+							time_t t = timestamp->valueint;
 							clock_realign(t);
 							time_set = true;
 						}
@@ -545,11 +555,11 @@ void clock_task(void *pvParameter){
 						/* check timezone, save in memory if it's different than what was saved previously */
 						cJSON *timezone = cJSON_GetObjectItemCaseSensitive(json, "timezone");
 						if(cJSON_IsObject(timezone)){
-							cJSON *timezoneString = cJSON_GetObjectItemCaseSensitive(timezone, "timezoneString");
-							if(cJSON_IsString(timezoneString) && strcmp(clock_config.timezone.name, timezoneString->valuestring) != 0){
+							cJSON *timezoneName = cJSON_GetObjectItemCaseSensitive(timezone, "name");
+							if(cJSON_IsString(timezoneName) && strcmp(clock_config.timezone.name, timezoneName->valuestring) != 0){
 								/* realign clock_timezone */
 								updateNVS = true;
-								strcpy(clock_config.timezone.name, timezoneString->valuestring);
+								strcpy(clock_config.timezone.name, timezoneName->valuestring);
 								ESP_LOGI(TAG, "Timezone set to: %s", clock_config.timezone.name);
 							}
 
