@@ -107,21 +107,24 @@ typedef struct sleepmode_t{
 }sleepmode_t;
 
 
+typedef struct sleepmodes_t{
+	bool enable_sleepmode;
+	sleepmode_t sleepmode[CLOCK_MAX_SLEEPMODES];
+}sleepmodes_t;
+
+
 /**
  * @brief defines a structure holding the gloabl configuration of the clock */
 typedef struct clock_config_t{
 	timezone_t timezone;
-	bool enable_sleepmode;
-	sleepmode_t sleepmode[CLOCK_MAX_SLEEPMODES];
+	sleepmodes_t sleepmodes;
 }clock_config_t;
 
 
 #define GPIO_INPUT_IO_4 				4
 
 
-esp_err_t clock_set_sleepmodes_from_json(char* raw);
-
-
+void clock_notify_new_sleepmodes(sleepmodes_t sleepmodes);
 void clock_notify_sta_got_ip(void* pvArgument);
 void clock_notify_sta_disconnected();
 void clock_notify_time_api_response(cJSON *json);
@@ -138,6 +141,11 @@ timezone_t clock_get_current_timezone();
  * @brief saves the current configuration to NVS memory
  */
 esp_err_t clock_save_config(clock_config_t *conf);
+
+
+clock_config_t clock_get_config();
+
+
 
 /**
  * @brief Retrieves the configuration from NVS memory
