@@ -112,6 +112,17 @@ typedef struct sleepmodes_t{
 	sleepmode_t sleepmode[CLOCK_MAX_SLEEPMODES];
 }sleepmodes_t;
 
+typedef enum sleep_action_t{
+	SLEEP_ACTION_UNKNOWN = -1,
+	SLEEP_ACTION_WAKE = 0,
+	SLEEP_ACTION_SLEEP = 1
+}sleep_action_t;
+
+typedef struct sleep_event_t{
+	time_t timestamp;
+	sleep_action_t action;
+}sleep_event_t;
+
 
 /**
  * @brief defines a structure holding the gloabl configuration of the clock */
