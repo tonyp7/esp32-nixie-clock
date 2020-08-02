@@ -31,8 +31,12 @@ SOFTWARE.
 #ifndef MAIN_LIST_H_
 #define MAIN_LIST_H_
 
+#include "clock.h" /* for sleep_event_t */
+
+#define LIST_DATA_TYPE sleep_event_t
+
 struct node_t {
-    void* data;
+    LIST_DATA_TYPE data;
     struct node_t* next;
 };
 typedef struct node_t node_t;
@@ -54,29 +58,40 @@ list_t* list_create();
  */
 void list_free(list_t* list);
 
+/**
+ * @brief clear and frees all elements of a list, without destroying the list itself
+ */
+void list_clear(list_t* list);
+
 
 /**
  * @brief add data to the (end) tail of the list
  */
-void list_push(list_t* list, void* data);
+void list_push(list_t* list, LIST_DATA_TYPE data);
 
 
 /**
  * @brief add data in the list as per the comparison function provided
  */
-void list_add_ordered(list_t* list, void* data, int (*comp)(void*, void*));
+void list_add_ordered(list_t* list, LIST_DATA_TYPE data, int (*comp)(LIST_DATA_TYPE, LIST_DATA_TYPE));
 
 
 /**
  * @brief Remove an item from the beginning of the list
  */
-void* list_shift(list_t* list);
+int list_shift(list_t* list, LIST_DATA_TYPE * data);
 
 
 /**
  * @brief Remove an item at the end of the list
  */
-void* list_pop(list_t* list);
+int list_pop(list_t* list, LIST_DATA_TYPE * data);
+
+
+/**
+ * @brief Get the first element of the list
+ */
+int list_peek(list_t* list, LIST_DATA_TYPE * data);
 
 
 #endif

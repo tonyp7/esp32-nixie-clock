@@ -59,8 +59,25 @@ void list_free(list_t* list)
 	free(list);
 }
 
+void list_clear(list_t* list)
+{
+    node_t* next;
+	node_t* curr = list->first;
 
-void list_push(list_t* list, void* data) 
+	while (curr != NULL) {
+		next = curr->next;
+		free(curr);
+		curr = next;
+	}
+
+    list->count = 0;
+    list->first = NULL;
+    list->last = NULL;
+}
+
+
+
+void list_push(list_t* list, LIST_DATA_TYPE data) 
 {
 	node_t* node = malloc(sizeof(node_t));
 	node->data = data;
@@ -82,7 +99,7 @@ void list_push(list_t* list, void* data)
 
 
 
-void list_add_ordered(list_t* list, void* data, int (*comp)(void*, void*))
+void list_add_ordered(list_t* list, LIST_DATA_TYPE data, int (*comp)(LIST_DATA_TYPE, LIST_DATA_TYPE))
 {
 
 	if (list->count == 0) return list_push(list, data);
@@ -96,7 +113,7 @@ void list_add_ordered(list_t* list, void* data, int (*comp)(void*, void*))
 	
 
 	/* find spot in list to add the new element */
-	while (current != NULL && current->data != NULL && comp(current->data, data) < 0) {
+	while (current != NULL && comp(current->data, data) < 0) {
 		previous = current;
 		current = current->next;
 	}
@@ -126,11 +143,11 @@ void list_add_ordered(list_t* list, void* data, int (*comp)(void*, void*))
 }
 
 
-void* list_shift(list_t* list) 
+int list_shift(list_t* list, LIST_DATA_TYPE * data) 
 {
 	if (list->first) {
 		node_t* first = list->first;
-		void* shift_data = first->data;
+		LIST_DATA_TYPE shift_data = first->data;
 		
 		if (list->last == list->first) { /*edge case where list contains one element */
 			list->first = NULL;
@@ -143,19 +160,32 @@ void* list_shift(list_t* list)
 		free(first);
 		list->count--;
 
-		return shift_data;
+        *data = shift_data;
+        return 0;
 	}
 	else {
-		return NULL;
+		return -1;
 	}
 }
 
-void* list_pop(list_t* list)
+
+int list_peek(list_t* list, LIST_DATA_TYPE * data)
+{
+    if (list->first) {
+        *data = list->first->data;
+        return 0;
+    }
+    else{
+        return -1;
+    }
+}
+
+int list_pop(list_t* list, LIST_DATA_TYPE * data)
 {
 	if (list->last) {
 
 		node_t* last = list->last;
-		void* pop_data = last->data;
+		LIST_DATA_TYPE pop_data = last->data;
 
 		if (list->last == list->first) { /*edge case where list contains one element */
 			list->first = NULL;
@@ -172,10 +202,12 @@ void* list_pop(list_t* list)
 
 		free(last);
 		list->count--;
-		return pop_data;
+
+        *data = pop_data;
+        return 0;
 
 	}
 	else {
-		return NULL;
+		return -1;
 	}
 }
