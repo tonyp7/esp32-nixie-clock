@@ -54,20 +54,21 @@ SOFTWARE.
 #include "http_client.h"
 #include "display.h"
 #include "ws2812.h"
+#include "list.h"
 
 
 
 
-/* @brief tag used for ESP serial console messages */
+/** @brief tag used for ESP serial console messages */
 static const char TAG[] = "clock";
 
-/* @brief flash memory namespace for the clock */
+/** @brief flash memory namespace for the clock */
 const char clock_nvs_namespace[] = "clock";
 
-/* @brief storage for timestamp transitions */
+/** @brief storage for timestamp transitions */
 static transition_t clock_transitions[CLOCK_MAX_TRANSITIONS];
 
-/* @brief mutex to prevent several read/write to nvs at the same time */
+/** @brief mutex to prevent several read/write to nvs at the same time */
 static SemaphoreHandle_t clock_nvs_mutex = NULL;
 
 time_t timestamp_utc;
@@ -81,6 +82,9 @@ static clock_config_t clock_config;
 
 static QueueHandle_t clock_queue = NULL;
 static bool time_set = false;
+
+/** @brief List holding the sleep/wake events */
+static list_t* clock_list_sleepevents = NULL;
 
 
 time_t clock_get_current_time_utc(){
@@ -324,9 +328,105 @@ esp_err_t clock_get_nvs_timezone(timezone_t *tz){
 }
 
 
+static int comp_sleep_event(sleep_event_t *a, sleep_event_t *b){
+
+	if(a && b){
+
+		if(a->timestamp == b->timestamp) return 0;
+		else if(a->timestamp < b->timestamp) return -1;
+		else return 1;
+	}
+	else{
+		return a - b;
+	}
+}
+
+static void clock_build_new_sleepmodes(sleepmodes_t sleepmodes){
+	bool should_be_asleep = false;
+    time_t time_now_utc = clock_get_current_time_utc();
+    struct tm tm_now;
+    int offset = clock_config.timezone.offset;
+
+    /* initialize the event */
+    time_t time_now_local = time_now_utc + offset; /* apply local timezone then build the tm now object */
+    gmtime_r(&time_now_local, &tm_now);
+	/* gmtime_s(&tm_now, &time_now_local); on Windows */
+
+	/* clear the previous events */
+	list_clear(clock_list_sleepevents);
+
+    if (sleepmodes.enable_sleepmode) {
+
+        /* get current day of the week at midnight */
+        time_t today_at_midight = time_now_local - (time_t)tm_now.tm_sec - ((time_t)tm_now.tm_min * 60) - ((time_t)tm_now.tm_hour * 3600);
+
+        /* process all the sleepmodes */
+        for (int i = 0; i < CLOCK_MAX_SLEEPMODES; i++) {
+
+            /* to save some typing and code clarity */
+            sleepmode_t sm = sleepmodes.sleepmode[i];
+
+            /* skip if this one is disabled */
+            if (!sm.enabled) continue;
+
+            /* transform a sleepmode into UTC timestamp and add it to the list */
+
+            int weekday = 1; /* the mask starts on mondays which is 1 on a struct tm */
+            uint8_t days = sm.days;
+            for (int j = 0; j < 7; j++) {
+               
+                if (days & (uint8_t)0x01) {
+                    /* when is the next weekday matching ?
+                        tm_wday = 1 (Monday), weekday = 1 => offset is 0
+                        tm_wday = 1 (Monday), weekday = 2 => offset is 1 (tomorrow)
+                        tm_wday = 3 (Wednesday), weekday = 1 (Next Monday) => offset is  (7-3 + 1) = 5 days
+                    */
+                    time_t day_offset;
+                    if (tm_now.tm_wday <= weekday) {
+                        day_offset = ((time_t)weekday - tm_now.tm_wday) * (time_t)86400; /* 24h * 3600 */
+                    }
+                    else {
+                        day_offset = ((time_t)7 - tm_now.tm_wday + weekday) * (time_t)86400; /* 24h * 3600 */
+                    }
+ 
+                    /* build both events
+                    if the TO hour is less than from, we consider it's for the next day and so add further offset */
+                    sleep_event_t from = { .timestamp = today_at_midight + day_offset + sm.from, .action = SLEEP_ACTION_SLEEP };
+                    sleep_event_t to = { .timestamp = today_at_midight + day_offset +  ((sm.to < sm.from)?(time_t)86400:0) + sm.to, .action = SLEEP_ACTION_WAKE };
+
+					list_add_ordered(clock_list_sleepevents, from, &comp_sleep_event);
+					list_add_ordered(clock_list_sleepevents, to, &comp_sleep_event);
+
+					/* debug -- can be deleted in production code */
+					struct tm debug;
+					static char strftime_buf[64];
+					localtime_r(&from.timestamp, &debug);
+					strftime(strftime_buf, sizeof(strftime_buf), "%c", &debug);
+					ESP_LOGI(TAG, "CLOCK WILL SLEEP AT: %s", strftime_buf);
+					localtime_r(&to.timestamp, &debug);
+					strftime(strftime_buf, sizeof(strftime_buf), "%c", &debug);
+					ESP_LOGI(TAG, "CLOCK WILL WAKE AT: %s", strftime_buf);
+
+
+                }
+
+                days = days >> 1;
+                weekday++; if (weekday == 7) weekday = 0; /* wrap around for sunday */
+
+            } /* for (int j = 0; j < 7; j++) */
+        } /* for (int i = 0; i < CLOCK_MAX_SLEEPMODES; i++) */
+    } /* if (sleepmodes.enable_sleepmode) */
+}
 
 void clock_notify_new_sleepmodes(sleepmodes_t sleepmodes){
-	
+
+	clock_queue_message_t msg;
+	sleepmodes_t* sm = malloc(sizeof(sleepmodes_t));
+	*sm = sleepmodes;
+	msg.message = CLOCK_MESSAGE_SLEEPMODE_CONFIG;
+	msg.param = (void*)sm;
+
+	xQueueSend(clock_queue, &msg, portMAX_DELAY);
 }
 
 clock_config_t clock_get_config(){
@@ -465,6 +565,10 @@ void clock_task(void *pvParameter){
 	clock_config.sleepmodes.enable_sleepmode = false;
 	ESP_ERROR_CHECK(clock_get_nvs_config(&clock_config));
 
+	/* generate the list of sleep events */
+	clock_list_sleepevents = list_create();
+	clock_notify_new_sleepmodes(clock_config.sleepmodes);
+
 	/* register interrupt on the 1Hz sqw signal coming from the DS3231 */
 	ESP_ERROR_CHECK(clock_register_sqw_interrupt());
 
@@ -587,6 +691,13 @@ void clock_task(void *pvParameter){
 						m.param = NULL;
 						xQueueSend(clock_queue, &m, portMAX_DELAY);
 
+					}
+					break;
+				case CLOCK_MESSAGE_SLEEPMODE_CONFIG:{
+					ESP_LOGI(TAG, "CLOCK_MESSAGE_SLEEPMODE_CONFIG");
+					sleepmodes_t* sleepmodes = (sleepmodes_t*)msg.param;
+					clock_build_new_sleepmodes(*sleepmodes);
+					free(sleepmodes);
 					}
 					break;
 				default:

@@ -73,7 +73,7 @@ void list_push(list_t* list, LIST_DATA_TYPE data);
 /**
  * @brief add data in the list as per the comparison function provided
  */
-void list_add_ordered(list_t* list, LIST_DATA_TYPE data, int (*comp)(LIST_DATA_TYPE, LIST_DATA_TYPE));
+void list_add_ordered(list_t* list, LIST_DATA_TYPE data, int (*comp)(LIST_DATA_TYPE*, LIST_DATA_TYPE*));
 
 
 /**

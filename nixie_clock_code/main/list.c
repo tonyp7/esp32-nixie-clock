@@ -99,7 +99,7 @@ void list_push(list_t* list, LIST_DATA_TYPE data)
 
 
 
-void list_add_ordered(list_t* list, LIST_DATA_TYPE data, int (*comp)(LIST_DATA_TYPE, LIST_DATA_TYPE))
+void list_add_ordered(list_t* list, LIST_DATA_TYPE data, int (*comp)(LIST_DATA_TYPE*, LIST_DATA_TYPE*))
 {
 
 	if (list->count == 0) return list_push(list, data);
@@ -113,7 +113,7 @@ void list_add_ordered(list_t* list, LIST_DATA_TYPE data, int (*comp)(LIST_DATA_T
 	
 
 	/* find spot in list to add the new element */
-	while (current != NULL && comp(current->data, data) < 0) {
+	while (current != NULL && comp( &(current->data), &data) < 0) {
 		previous = current;
 		current = current->next;
 	}

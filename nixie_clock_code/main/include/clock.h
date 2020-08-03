@@ -40,7 +40,13 @@ apply offset manually to the timestamp.
 #define MAIN_CLOCK_H_
 
 
-#include "cJSON.h"
+#include <stdint.h> /* for int32_t, etc. */
+#include <time.h> /* for time_t */
+#include <stdbool.h> /* for bool */
+#include <esp_err.h> /* for esp_err_t */
+#include "freertos/FreeRTOS.h" /* TickType_t */
+#include "cJSON.h" /* for cJSON */
+
 
 /** @brief Defines the task priority of the clock (main task).
  *  This should be the highest priority task unless very specific reason. Default: 10.
@@ -77,6 +83,7 @@ typedef enum clock_message_t{
 	CLOCK_MESSAGE_RECEIVE_TRANSITIONS_API = 5,
 	CLOCK_MESSAGE_REQUEST_TRANSITIONS_API_CALL = 6,
 	CLOCK_MESSAGE_REQUEST_TIME_API = 7,
+	CLOCK_MESSAGE_SLEEPMODE_CONFIG = 8,
 	CLOCK_MESSAGE_MAX = 0x7fffffff
 }clock_message_t;
 
