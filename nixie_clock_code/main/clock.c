@@ -87,19 +87,35 @@ static bool time_set = false;
 static list_t* clock_list_sleepevents = NULL;
 
 
+/** @brief Save task handle to notify it of saving */
+static TaskHandle_t clock_task_save_nvs = NULL;
+
+
 time_t clock_get_current_time_utc(){
 	return timestamp_utc;
 }
 
 
 /**
- * @brief task the will save the config in NVS when it is safe to do so
+ * @brief task the will save the config in NVS when it is notified and it is safe to do so
  */
 static void clock_save_config_task(void *pvParameter){
-	if(clock_nvs_lock( pdMS_TO_TICKS( 10000 ) )){
-		clock_save_config(&clock_config);
-		clock_nvs_unlock();
+
+	ESP_LOGI(TAG, "clock_save_config_task started");
+	for(;;){
+
+		if(ulTaskNotifyTake(pdFALSE, portMAX_DELAY)){
+
+			ESP_LOGI(TAG, "clock_save_config_task received notification");
+
+			clock_config_t cfg = clock_get_config();
+			if(clock_nvs_lock( portMAX_DELAY )){
+				clock_save_config(&cfg);
+				clock_nvs_unlock();
+			}
+		}
 	}
+
 	vTaskDelete( NULL );
 }
 
@@ -192,8 +208,8 @@ void clock_tick(){
 		ESP_LOGI(TAG, "Saving new offset: %d vs old: %d", new_offset, clock_timezone->offset);
 		clock_timezone->offset = new_offset;
 
-		/* spawn low priority task that'll save the new offset in nvs memory */
-		xTaskCreate(&clock_save_config_task, "ck_save_conf", 4096, NULL, 2, NULL);
+		/* save new conf in memory */
+		xTaskNotifyGive( clock_task_save_nvs );
 
 		/* if a transition was processed it's a good idea to force a refresh soon */
 		timestamp_transitions_check = timestamp_utc + (time_t)(60*60*24*15);
@@ -279,7 +295,7 @@ esp_err_t clock_get_nvs_config(clock_config_t *conf){
 		esp_err = nvs_open(clock_nvs_namespace, NVS_READWRITE, &handle);
 		if(esp_err == ESP_OK){
 
-			size_t sz = sizeof(timezone_t);
+			size_t sz = sizeof(clock_config_t);
 			ESP_ERROR_CHECK(nvs_set_blob(handle, "conf", conf, sz));
 			ESP_ERROR_CHECK(nvs_commit(handle));
 			nvs_close(handle);
@@ -422,6 +438,7 @@ void clock_notify_new_sleepmodes(sleepmodes_t sleepmodes){
 
 	clock_queue_message_t msg;
 	sleepmodes_t* sm = malloc(sizeof(sleepmodes_t));
+	memset(sm, 0x00, sizeof(sleepmodes_t));
 	*sm = sleepmodes;
 	msg.message = CLOCK_MESSAGE_SLEEPMODE_CONFIG;
 	msg.param = (void*)sm;
@@ -517,12 +534,17 @@ esp_err_t clock_save_timezone(timezone_t *tz){
 void clock_task(void *pvParameter){
 
 
+	
+
 	/* debug, should be cut in prod code */
 	char strftime_buf[64];
 
 	/* memory init */
 	memset(&clock_transitions, 0x00, sizeof(CLOCK_MAX_TRANSITIONS) * CLOCK_MAX_TRANSITIONS);
 	clock_nvs_mutex = xSemaphoreCreateMutex();
+
+	/* create the task that is used to save config in memory */
+	xTaskCreate( &clock_save_config_task, "task_save_cfg", 4096, NULL, tskIDLE_PRIORITY+1, &clock_task_save_nvs );
 
 	/* register clock queue */
 	clock_queue = xQueueCreate(10, sizeof(clock_queue_message_t));
@@ -551,12 +573,6 @@ void clock_task(void *pvParameter){
 		time_set = true;
 	}
 	clock_time_tm_ptr = localtime(&timestamp_utc);
-
-
-	/* init timezone and attempt to get what was saved in nvs */
-	//clock_timezone.offset = 0;
-	//strcpy(clock_timezone.name, "UTC");
-	//ESP_ERROR_CHECK(clock_get_nvs_timezone(&clock_timezone));
 
 	/* initialize configuration */
 	memset(&clock_config, 0x00, sizeof(clock_config));
@@ -680,9 +696,9 @@ void clock_task(void *pvParameter){
 						free(json_str);
 						cJSON_Delete(json);
 
-						/* NVS needs to updated: spawn a low priority task that'll take care of it when possible */
+						/* NVS needs to updated: notify the task that handles that */
 						if(updateNVS){
-							xTaskCreate(&clock_save_config_task, "ck_save_conf", 4096, NULL, 2, NULL);
+							xTaskNotifyGive( clock_task_save_nvs );
 						}
 
 						/* finally, enqueue a timezone transitions call with the set timezone */
@@ -697,11 +713,22 @@ void clock_task(void *pvParameter){
 					ESP_LOGI(TAG, "CLOCK_MESSAGE_SLEEPMODE_CONFIG");
 					sleepmodes_t* sleepmodes = (sleepmodes_t*)msg.param;
 					clock_build_new_sleepmodes(*sleepmodes);
+
+					/* if config needs to be updated then we do so and notify the task to save in flash 
+						NOTE: we can do a simple memory comparison here because all the configurations objects
+						are religiously bzero'd before using.
+						This otherwise would be a problem because of struct alignments.
+					*/
+					if( memcmp( sleepmodes, &(clock_config.sleepmodes), sizeof(sleepmodes_t) ) != 0 ){
+						clock_config.sleepmodes = *sleepmodes;
+						xTaskNotifyGive( clock_task_save_nvs );
+					}
+
 					free(sleepmodes);
 					}
 					break;
 				default:
-					ESP_LOGI(TAG, "DEFAULT");
+					ESP_LOGE(TAG, "Unknown task message received: %d", msg.message);
 					break;
 			}
 
