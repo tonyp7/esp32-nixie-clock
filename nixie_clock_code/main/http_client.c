@@ -146,10 +146,9 @@ static esp_err_t _http_event_handler(esp_http_client_event_t *evt){
 }
 
 
-static void http_client_api_time_task(void *pvParameter){
+static void http_client_api_time_process(char *timezone){
 
 	esp_err_t err;
-	char* timezone = (char*)pvParameter;
 	ESP_LOGI(TAG, "tz: %s", timezone);
 
 	esp_http_client_config_t config = {
@@ -203,7 +202,7 @@ static void http_client_api_time_task(void *pvParameter){
 }
 
 
-static void http_client_api_transitions_task(void *pvParameter){
+static void http_client_api_transitions_process(void *pvParameter){
 	timezone_t timezone = clock_get_current_timezone();
 	time_t now = clock_get_current_time_utc();
 
@@ -289,12 +288,17 @@ static void http_client_task(void *pvParameter){
 
 			switch(msg.message){
 
-				case CLOCK_MESSAGE_REQUEST_TIME_API:
-					http_client_api_time_task( msg.param );
+				case CLOCK_MESSAGE_REQUEST_TIME_API:{
+					char* tz = (char*)msg.param;
+					http_client_api_time_process( tz );
+					if(tz != NULL){
+						free(tz);
+					}
+					}
 					break;
 
 				case CLOCK_MESSAGE_REQUEST_TRANSITIONS_API_CALL:
-					http_client_api_transitions_task( NULL );
+					http_client_api_transitions_process( NULL );
 					break;
 
 				default:
@@ -322,8 +326,12 @@ void http_client_get_transitions(timezone_t timezone, time_t now){
 
 void http_client_get_api_time(char* timezone){
 	clock_queue_message_t msg;
+	size_t sz = strlen(timezone) + 1;
+	char* param = malloc(sizeof(char) * sz);
+	memset(param, 0x00, sz);
+	strcpy(param, timezone);
 	msg.message = CLOCK_MESSAGE_REQUEST_TIME_API;
-	msg.param = (void*)timezone;
+	msg.param = (void*)param;
 	xQueueSend(http_client_queue, &msg, portMAX_DELAY);
 }
 
