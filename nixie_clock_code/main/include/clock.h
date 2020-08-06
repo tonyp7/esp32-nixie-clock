@@ -84,6 +84,7 @@ typedef enum clock_message_t{
 	CLOCK_MESSAGE_REQUEST_TRANSITIONS_API_CALL = 6,
 	CLOCK_MESSAGE_REQUEST_TIME_API = 7,
 	CLOCK_MESSAGE_SLEEPMODE_CONFIG = 8,
+	CLOCK_MESSAGE_TIMEZONE = 9,
 	CLOCK_MESSAGE_MAX = 0x7fffffff
 }clock_message_t;
 
@@ -142,6 +143,7 @@ typedef struct clock_config_t{
 #define GPIO_INPUT_IO_4 				4
 
 
+void clock_notify_new_timezone(char* timezone);
 void clock_notify_new_sleepmodes(sleepmodes_t sleepmodes);
 void clock_notify_sta_got_ip(void* pvArgument);
 void clock_notify_sta_disconnected();
