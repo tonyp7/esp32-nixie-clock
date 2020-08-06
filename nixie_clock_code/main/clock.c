@@ -160,9 +160,29 @@ void clock_notify_transitions_api_response(cJSON *json){
 	}
 }
 
+void clock_notify_new_sleepmodes(sleepmodes_t sleepmodes){
 
-void clock_change_timezone(timezone_t tz){
+	clock_queue_message_t msg;
+	sleepmodes_t* sm = malloc(sizeof(sleepmodes_t));
+	memset(sm, 0x00, sizeof(sleepmodes_t));
+	*sm = sleepmodes;
+	msg.message = CLOCK_MESSAGE_SLEEPMODE_CONFIG;
+	msg.param = (void*)sm;
 
+	xQueueSend(clock_queue, &msg, portMAX_DELAY);
+}
+
+
+void clock_notify_new_timezone(char* timezone){
+
+	clock_queue_message_t msg;
+	timezone_t* tz = malloc(sizeof(timezone_t));
+	memset(tz, 0x00, sizeof(timezone_t));
+	strncpy(  tz->name, timezone, sizeof(tz->name) - 1 );
+	msg.message = CLOCK_MESSAGE_TIMEZONE;
+	msg.param = (void*)tz;
+
+	xQueueSend(clock_queue, &msg, portMAX_DELAY);
 }
 
 
@@ -434,17 +454,7 @@ static void clock_build_new_sleepmodes(sleepmodes_t sleepmodes){
     } /* if (sleepmodes.enable_sleepmode) */
 }
 
-void clock_notify_new_sleepmodes(sleepmodes_t sleepmodes){
 
-	clock_queue_message_t msg;
-	sleepmodes_t* sm = malloc(sizeof(sleepmodes_t));
-	memset(sm, 0x00, sizeof(sleepmodes_t));
-	*sm = sleepmodes;
-	msg.message = CLOCK_MESSAGE_SLEEPMODE_CONFIG;
-	msg.param = (void*)sm;
-
-	xQueueSend(clock_queue, &msg, portMAX_DELAY);
-}
 
 clock_config_t clock_get_config(){
 	clock_config_t conf = clock_config;
@@ -596,7 +606,13 @@ void clock_task(void *pvParameter){
 			switch(msg.message){
 				case CLOCK_MESSAGE_STA_GOT_IP:
 					ESP_LOGI(TAG, "CLOCK_MESSAGE_STA_GOT_IP");
-					http_client_get_api_time("Asia/Singapore");
+					http_client_get_api_time(clock_config.timezone.name);
+					break;
+				case CLOCK_MESSAGE_TIMEZONE:
+					ESP_LOGI(TAG, "CLOCK_MESSAGE_TIMEZONE");
+					timezone_t* tz = (timezone_t*)msg.param;
+					http_client_get_api_time(tz->name);
+					free(tz);
 					break;
 				case CLOCK_MESSAGE_TICK:
 					//ESP_LOGI(TAG, "CLOCK_MESSAGE_TICK");
@@ -608,7 +624,6 @@ void clock_task(void *pvParameter){
 					}
 					break;
 				case CLOCK_MESSAGE_REQUEST_TRANSITIONS_API_CALL:
-					//http_client_get_transitions(clock_timezone, timestamp_utc);
 					http_client_get_transitions(clock_config.timezone, timestamp_utc);
 					break;
 				case CLOCK_MESSAGE_RECEIVE_TRANSITIONS_API:{
