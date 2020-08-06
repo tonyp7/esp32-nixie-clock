@@ -49,7 +49,7 @@ static spi_transaction_t t;
 static void IRAM_ATTR gpio_usb_power_isr_handler(void* arg){
 
 	/* disable display when USB is on as a measure of security for the whole board. USB powering HV power supply after going through a tiny diode = bad idea */
-	gpio_set_level(DEBUG_USB_POWER_ON_GPIO, 1);
+	gpio_set_level(DISPLAY_OE_GPIO, 1);
 	return;
 }
 
@@ -91,6 +91,10 @@ esp_err_t display_init(){
 	/* by default display is off but HV power supply is enabled, idling */
 	gpio_set_level(DISPLAY_OE_GPIO, 1); /* output enable is reversed logic. This effectively has no effect since the pin is physically pulled-up to 3v3 */
 	gpio_set_level(DISPLAY_HVEN_GPIO, 1);
+
+	/* register interrupt on USB power */
+	ret = display_register_usb_power_interrupt();
+	if(ret != ESP_OK) return ret;
 
 	spi_bus_config_t buscfg={
 		.miso_io_num=-1, /* -1 == not used */
@@ -135,7 +139,7 @@ esp_err_t display_write_vram(){
 	esp_err_t ret;
 
 
-	/* due to esp32 endianess, we need to swipe bytes */
+	/* due to esp32 endianess, we need to swipe bytes. The hardware assumes big endian but the esp is little endian. */
 	for(int i=0;i<6;i++){
 		display_vram[i] = __bswap_16(display_vram[i]);
 	}
@@ -145,7 +149,6 @@ esp_err_t display_write_vram(){
 	if(gpio_get_level(DEBUG_USB_POWER_ON_GPIO) == 0){
 		gpio_set_level(DISPLAY_OE_GPIO, 0);
 	}
-
 
 	gpio_set_level(DISPLAY_SPI_CS_GPIO, 0);
 	ret=spi_device_transmit(spi, &t);
