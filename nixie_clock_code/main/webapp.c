@@ -54,6 +54,8 @@ extern const uint8_t clock_html_start[] asm("_binary_clock_html_start");
 extern const uint8_t clock_html_end[] asm("_binary_clock_html_end");
 extern const uint8_t iro_js_start[] asm("_binary_iro_js_start");
 extern const uint8_t iro_js_end[] asm("_binary_iro_js_end");
+extern const uint8_t timezones_json_start[] asm("_binary_timezones_json_start");
+extern const uint8_t timezones_json_end[] asm("_binary_timezones_json_end");
 
 
 /* const httpd related values stored in ROM */
@@ -61,6 +63,7 @@ const static char http_200_hdr[] = "200 OK";
 const static char http_400_hdr[] = "400 Bad Request";
 //const static char http_503_hdr[] = "503 Service Unavailable";
 const static char http_content_type_html[] = "text/html";
+const static char http_content_type_txt[] = "text/plain";
 const static char http_content_type_js[] = "text/javascript";
 const static char http_content_type_css[] = "text/css";
 const static char http_content_type_json[] = "application/json";
@@ -144,6 +147,23 @@ static esp_err_t webapp_get_hander(httpd_req_t *req){
         httpd_resp_set_hdr(req, http_cache_control_hdr, http_cache_control_cache);
 		httpd_resp_send(req, (char*)clock_css_start, clock_css_end - clock_css_start);
     }
+    else if(strcmp(req->uri, "/timezones.json") == 0){
+
+        httpd_resp_set_status(req, http_200_hdr);
+		httpd_resp_set_type(req, http_content_type_json);
+		httpd_resp_send(req, (char*)timezones_json_start, timezones_json_end - timezones_json_start);
+    }
+    else if(strcmp(req->uri, "/timezone/") == 0){
+
+        clock_config_t conf = clock_get_config();
+
+        httpd_resp_set_status(req, http_200_hdr);
+		httpd_resp_set_type(req, http_content_type_txt);
+        httpd_resp_set_hdr(req, http_cache_control_hdr, http_cache_control_no_cache);
+        httpd_resp_set_hdr(req, http_pragma_hdr, http_pragma_no_cache);
+        httpd_resp_send(req, conf.timezone.name, strlen( conf.timezone.name ));
+        
+    }
     else if(strcmp(req->uri, "/sleepmode/") == 0){
 
         clock_config_t conf = clock_get_config();
@@ -219,8 +239,62 @@ static esp_err_t webapp_parse_sleemodes(char *content, sleepmodes_t *sleepmodes)
 
 static esp_err_t webapp_post_handler(httpd_req_t *req){
 
+    if(strcmp(req->uri, "/timezone/") == 0){
+        /* process a timezone change. Expected content is in the format: 
+            { "timezone" : "America\/Indiana\/Indianapolis" }
+        */
+        clock_config_t conf = clock_get_config();
+        const size_t buffer_size = 60; 
+        char content[buffer_size]; /* 60 byte is OK to just put on the stack */
+        esp_err_t ret = ESP_OK;
+        memset(content, 0x00, buffer_size);
 
-    if(strcmp(req->uri, "/sleepmode/") == 0){
+        /* Truncate if content length larger than the buffer. If we fall on this case it means the request is probably buggy */
+        size_t recv_size = MIN(req->content_len, sizeof(content));
+
+        int read_count = httpd_req_recv(req, content, recv_size);
+        if (read_count <= 0) {  /* 0 return value indicates connection closed */
+            /* Check if timeout occurred */
+            if (read_count == HTTPD_SOCK_ERR_TIMEOUT) {
+                /* In case of timeout one can choose to retry calling
+                    * httpd_req_recv(), but to keep it simple, here we
+                    * respond with an HTTP 408 (Request Timeout) error */
+                httpd_resp_send_408(req);
+            }
+            else {
+                httpd_resp_send_500(req);
+            }
+            return ESP_FAIL;
+        }
+
+        /* avoids a buffer overflow parsing the string if the content is just the size of the buffer */
+        content[buffer_size - 1] = '\0';
+
+        /* parse to json */
+        cJSON *json = cJSON_Parse(content);
+
+        if(json == NULL){
+            const char *error_ptr = cJSON_GetErrorPtr();
+            ESP_LOGE(TAG, "cJSON parsing error: %s", error_ptr);
+
+            /* bad request */
+            httpd_resp_set_status(req, http_400_hdr);
+            httpd_resp_send(req, NULL, 0);
+            return ESP_FAIL;
+        }
+
+        cJSON *timezone = cJSON_GetObjectItemCaseSensitive(json, "timezone");
+
+        if(strcmp(timezone->string, conf.timezone.name) != 0){
+            /* timezone change!*/
+            clock_notify_new_timezone(timezone->string);
+        }
+
+        cJSON_Delete(json);
+        return ret;
+
+    }
+    else if(strcmp(req->uri, "/sleepmode/") == 0){
 
 
         const size_t max_buffer_size = 511;
