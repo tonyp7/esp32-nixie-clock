@@ -139,6 +139,7 @@ typedef struct sleep_event_t{
 typedef struct clock_config_t{
 	timezone_t timezone;
 	sleepmodes_t sleepmodes;
+	display_config_t display;
 }clock_config_t;
 
 
