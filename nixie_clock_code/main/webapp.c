@@ -285,9 +285,9 @@ static esp_err_t webapp_post_handler(httpd_req_t *req){
 
         cJSON *timezone = cJSON_GetObjectItemCaseSensitive(json, "timezone");
 
-        if(strcmp(timezone->string, conf.timezone.name) != 0){
+        if(strcmp(timezone->valuestring, conf.timezone.name) != 0){
             /* timezone change!*/
-            clock_notify_new_timezone(timezone->string);
+            clock_notify_new_timezone(timezone->valuestring);
         }
 
         cJSON_Delete(json);
