@@ -85,6 +85,7 @@ typedef enum clock_message_t{
 	CLOCK_MESSAGE_REQUEST_TIME_API = 7,
 	CLOCK_MESSAGE_SLEEPMODE_CONFIG = 8,
 	CLOCK_MESSAGE_TIMEZONE = 9,
+	CLOCK_MESSAGE_SLEEP_EVENT = 10,
 	CLOCK_MESSAGE_MAX = 0x7fffffff
 }clock_message_t;
 
@@ -121,9 +122,10 @@ typedef struct sleepmodes_t{
 }sleepmodes_t;
 
 typedef enum sleep_action_t{
-	SLEEP_ACTION_UNKNOWN = -1,
-	SLEEP_ACTION_WAKE = 0,
-	SLEEP_ACTION_SLEEP = 1
+	SLEEP_ACTION_UNKNOWN = 0,
+	SLEEP_ACTION_WAKE = 1,
+	SLEEP_ACTION_SLEEP = 2,
+	SLEEP_ACTION_MAX = 0x7fffffff
 }sleep_action_t;
 
 typedef struct sleep_event_t{

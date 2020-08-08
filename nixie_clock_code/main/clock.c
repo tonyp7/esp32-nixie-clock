@@ -119,6 +119,103 @@ static void clock_save_config_task(void *pvParameter){
 	vTaskDelete( NULL );
 }
 
+static int comp_sleep_event(sleep_event_t *a, sleep_event_t *b){
+
+	if(a && b){
+
+		if(a->timestamp == b->timestamp) return 0;
+		else if(a->timestamp < b->timestamp) return -1;
+		else return 1;
+	}
+	else{
+		return a - b;
+	}
+}
+
+static void clock_build_new_sleepmodes(sleepmodes_t sleepmodes){
+
+    time_t time_now_utc = clock_get_current_time_utc();
+    struct tm tm_now;
+    int offset = clock_config.timezone.offset;
+
+    /* initialize the event */
+    time_t time_now_local = time_now_utc + offset; /* apply local timezone then build the tm now object */
+    gmtime_r(&time_now_local, &tm_now);
+	/* gmtime_s(&tm_now, &time_now_local); on Windows */
+
+	/* clear the previous events */
+	list_clear(clock_list_sleepevents);
+
+    if (sleepmodes.enable_sleepmode) {
+
+        /* get current day of the week at midnight */
+        time_t today_at_midight = time_now_local - (time_t)tm_now.tm_sec - ((time_t)tm_now.tm_min * 60) - ((time_t)tm_now.tm_hour * 3600);
+
+        /* process all the sleepmodes */
+        for (int i = 0; i < CLOCK_MAX_SLEEPMODES; i++) {
+
+            /* to save some typing and code clarity */
+            sleepmode_t sm = sleepmodes.sleepmode[i];
+
+            /* skip if this one is disabled */
+            if (!sm.enabled) continue;
+
+            /* transform a sleepmode into UTC timestamp and add it to the list */
+
+            int weekday = 1; /* the mask starts on mondays which is 1 on a struct tm */
+            uint8_t days = sm.days;
+            for (int j = 0; j < 7; j++) {
+               
+                if (days & (uint8_t)0x01) {
+                    /* when is the next weekday matching ?
+                        tm_wday = 1 (Monday), weekday = 1 => offset is 0
+                        tm_wday = 1 (Monday), weekday = 2 => offset is 1 (tomorrow)
+                        tm_wday = 3 (Wednesday), weekday = 1 (Next Monday) => offset is  (7-3 + 1) = 5 days
+                    */
+                    time_t day_offset;
+                    if (tm_now.tm_wday <= weekday) {
+                        day_offset = ((time_t)weekday - tm_now.tm_wday) * (time_t)86400; /* 24h * 3600 */
+                    }
+                    else {
+                        day_offset = ((time_t)7 - tm_now.tm_wday + weekday) * (time_t)86400; /* 24h * 3600 */
+                    }
+ 
+                    /* build both events
+                    if the TO hour is less than from, we consider it's for the next day and so add further offset */
+                    sleep_event_t from = { .timestamp = today_at_midight + day_offset + sm.from, .action = SLEEP_ACTION_SLEEP };
+                    sleep_event_t to = { .timestamp = today_at_midight + day_offset +  ((sm.to < sm.from)?(time_t)86400:0) + sm.to, .action = SLEEP_ACTION_WAKE };
+
+					list_add_ordered(clock_list_sleepevents, from, &comp_sleep_event);
+					list_add_ordered(clock_list_sleepevents, to, &comp_sleep_event);
+
+					/* debug -- can be deleted in production code */
+					struct tm debug;
+					static char strftime_buf[64];
+					localtime_r(&from.timestamp, &debug);
+					strftime(strftime_buf, sizeof(strftime_buf), "%c", &debug);
+					ESP_LOGI(TAG, "CLOCK WILL SLEEP AT: %s", strftime_buf);
+					localtime_r(&to.timestamp, &debug);
+					strftime(strftime_buf, sizeof(strftime_buf), "%c", &debug);
+					ESP_LOGI(TAG, "CLOCK WILL WAKE AT: %s", strftime_buf);
+
+
+                }
+
+                days = days >> 1;
+                weekday++; if (weekday == 7) weekday = 0; /* wrap around for sunday */
+
+            } /* for (int j = 0; j < 7; j++) */
+        } /* for (int i = 0; i < CLOCK_MAX_SLEEPMODES; i++) */
+
+		/* remove the sleep events that are in the past, get the last one and note if it should sleep or wake */
+		if(clock_list_sleepevents->count != 0){
+			
+		}
+
+
+    } /* if (sleepmodes.enable_sleepmode) */
+}
+
 
 timezone_t clock_get_current_timezone(){
 	//return clock_timezone;
@@ -245,8 +342,33 @@ void clock_tick(){
 		timestamp_transitions_check = timestamp_utc + (time_t)(60*60*24*15); /* do another check in 15 days */
 	}
 
-
 	timestamp_local = timestamp_utc + clock_timezone->offset;
+
+	/* check for sleep / wake event */
+	sleep_event_t sleep_event;
+	memset(&sleep_event, 0x00, sizeof(sleep_event_t));
+	while(  (list_peek(clock_list_sleepevents, &sleep_event) == 0) &&  ( sleep_event.timestamp <= timestamp_local )  ){
+		list_shift(clock_list_sleepevents, NULL);
+	}
+	if(sleep_event.action != SLEEP_ACTION_UNKNOWN){
+		clock_queue_message_t msg;
+		msg.message = CLOCK_MESSAGE_SLEEP_EVENT;
+		msg.param = (void*)sleep_event.action;
+		xQueueSend(clock_queue, &msg, portMAX_DELAY);
+
+		/* if a sleepevent was processed AND the count of the list is now 0, it means its time to refresh the list and
+		 * recalculate new sleep events 
+		 * Processing an item (eg sleep_event.action != SLEEP_ACTION_UNKNOWN) is important because the list can be empty
+		 * simply because user has not set any sleepmode.
+		 * */
+		if(clock_list_sleepevents->count == 0){
+			clock_build_new_sleepmodes(clock_config.sleepmodes);
+		}
+	}
+
+
+
+
 	clock_time_tm_ptr = localtime(&timestamp_local);
 }
 
@@ -362,98 +484,6 @@ esp_err_t clock_get_nvs_timezone(timezone_t *tz){
 	return esp_err;
 
 }
-
-
-static int comp_sleep_event(sleep_event_t *a, sleep_event_t *b){
-
-	if(a && b){
-
-		if(a->timestamp == b->timestamp) return 0;
-		else if(a->timestamp < b->timestamp) return -1;
-		else return 1;
-	}
-	else{
-		return a - b;
-	}
-}
-
-static void clock_build_new_sleepmodes(sleepmodes_t sleepmodes){
-	bool should_be_asleep = false;
-    time_t time_now_utc = clock_get_current_time_utc();
-    struct tm tm_now;
-    int offset = clock_config.timezone.offset;
-
-    /* initialize the event */
-    time_t time_now_local = time_now_utc + offset; /* apply local timezone then build the tm now object */
-    gmtime_r(&time_now_local, &tm_now);
-	/* gmtime_s(&tm_now, &time_now_local); on Windows */
-
-	/* clear the previous events */
-	list_clear(clock_list_sleepevents);
-
-    if (sleepmodes.enable_sleepmode) {
-
-        /* get current day of the week at midnight */
-        time_t today_at_midight = time_now_local - (time_t)tm_now.tm_sec - ((time_t)tm_now.tm_min * 60) - ((time_t)tm_now.tm_hour * 3600);
-
-        /* process all the sleepmodes */
-        for (int i = 0; i < CLOCK_MAX_SLEEPMODES; i++) {
-
-            /* to save some typing and code clarity */
-            sleepmode_t sm = sleepmodes.sleepmode[i];
-
-            /* skip if this one is disabled */
-            if (!sm.enabled) continue;
-
-            /* transform a sleepmode into UTC timestamp and add it to the list */
-
-            int weekday = 1; /* the mask starts on mondays which is 1 on a struct tm */
-            uint8_t days = sm.days;
-            for (int j = 0; j < 7; j++) {
-               
-                if (days & (uint8_t)0x01) {
-                    /* when is the next weekday matching ?
-                        tm_wday = 1 (Monday), weekday = 1 => offset is 0
-                        tm_wday = 1 (Monday), weekday = 2 => offset is 1 (tomorrow)
-                        tm_wday = 3 (Wednesday), weekday = 1 (Next Monday) => offset is  (7-3 + 1) = 5 days
-                    */
-                    time_t day_offset;
-                    if (tm_now.tm_wday <= weekday) {
-                        day_offset = ((time_t)weekday - tm_now.tm_wday) * (time_t)86400; /* 24h * 3600 */
-                    }
-                    else {
-                        day_offset = ((time_t)7 - tm_now.tm_wday + weekday) * (time_t)86400; /* 24h * 3600 */
-                    }
- 
-                    /* build both events
-                    if the TO hour is less than from, we consider it's for the next day and so add further offset */
-                    sleep_event_t from = { .timestamp = today_at_midight + day_offset + sm.from, .action = SLEEP_ACTION_SLEEP };
-                    sleep_event_t to = { .timestamp = today_at_midight + day_offset +  ((sm.to < sm.from)?(time_t)86400:0) + sm.to, .action = SLEEP_ACTION_WAKE };
-
-					list_add_ordered(clock_list_sleepevents, from, &comp_sleep_event);
-					list_add_ordered(clock_list_sleepevents, to, &comp_sleep_event);
-
-					/* debug -- can be deleted in production code */
-					struct tm debug;
-					static char strftime_buf[64];
-					localtime_r(&from.timestamp, &debug);
-					strftime(strftime_buf, sizeof(strftime_buf), "%c", &debug);
-					ESP_LOGI(TAG, "CLOCK WILL SLEEP AT: %s", strftime_buf);
-					localtime_r(&to.timestamp, &debug);
-					strftime(strftime_buf, sizeof(strftime_buf), "%c", &debug);
-					ESP_LOGI(TAG, "CLOCK WILL WAKE AT: %s", strftime_buf);
-
-
-                }
-
-                days = days >> 1;
-                weekday++; if (weekday == 7) weekday = 0; /* wrap around for sunday */
-
-            } /* for (int j = 0; j < 7; j++) */
-        } /* for (int i = 0; i < CLOCK_MAX_SLEEPMODES; i++) */
-    } /* if (sleepmodes.enable_sleepmode) */
-}
-
 
 
 clock_config_t clock_get_config(){
@@ -740,6 +770,18 @@ void clock_task(void *pvParameter){
 					}
 
 					free(sleepmodes);
+					}
+					break;
+				case CLOCK_MESSAGE_SLEEP_EVENT:{
+					ESP_LOGI(TAG, "CLOCK_MESSAGE_SLEEP_EVENT");
+					sleep_action_t a = (sleep_action_t)msg.param;
+					if(a == SLEEP_ACTION_WAKE){
+						display_turn_on();
+					}
+					else if(a == SLEEP_ACTION_SLEEP){
+						display_turn_off();
+					}
+
 					}
 					break;
 				default:
