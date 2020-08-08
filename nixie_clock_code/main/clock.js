@@ -68,12 +68,12 @@ function buildTime(t){
 }
 
 
-async function colorChangeCallback(color) {
+function colorChangeCallback(color) {
 
 	console.log(color.rgb);
 
 	try{
-		res = await fetch("backlights/", {
+		res = fetch("backlights/", {
 			method: "POST",
 			headers: {
 			  "Content-Type": "application/json",
@@ -85,6 +85,35 @@ async function colorChangeCallback(color) {
 		console.info("error in colorChangeCallback");
 	}
 	
+}
+
+async function getTimezones(){
+
+	try{
+
+		let restz = await fetch("timezone/");
+		let timezone = await restz.text();
+
+		let res = await fetch("timezones.json");
+		let timezones = await res.json();
+
+		let sel = gel("timezone-select");
+		sel.innerHTML = "";
+
+		timezones.forEach(function(entry) {
+			let opt = document.createElement('option');
+			opt.value = entry;
+			opt.selected = entry == timezone;
+			opt.innerHTML = entry;
+			sel.appendChild(opt);
+		});
+
+
+	}
+	catch (e){
+		console.info("error" + e);
+	}
+
 }
 
 async function getSleepMode(url = "sleepmode/") {
@@ -181,6 +210,28 @@ async function sleepModeDel(){
 	gel("diag-sleepmode").style.display = "none";
 	gel("clock-wrap").classList.remove("blur");
 	
+
+}
+
+async function changeTimezone(){
+	
+	let sel = gel("timezone-select");
+	let data = { "timezone": sel.value};
+
+	console.log(data);
+
+	try{
+		let res = await fetch("timezone/", {
+			method: "POST",
+			headers: {
+			  "Content-Type": "application/json",
+			},
+			body: JSON.stringify(data),
+		  });
+	}
+	catch (e) {
+		console.info("error in changeTimezone");
+	}
 
 }
 
@@ -288,6 +339,10 @@ docReady(async function () {
 	console.log("ready!");
 
 	await getSleepMode();
+	await getTimezones();
+
+	var colorPicker = new iro.ColorPicker('#color-picker-container');
+	colorPicker.on("color:change", colorChangeCallback);
 
 	for(let i=0; i < MAX_SLEEPMODES+1; i++){
 		gel("sm" + i.toString()).addEventListener(
@@ -317,6 +372,11 @@ docReady(async function () {
 		},
 		false
 	);
+
+
+	gel("timezone-select").addEventListener('change', async (event) => {
+		await changeTimezone();
+	});
 
 	gel("cancel-sleepmode").addEventListener(
 	"click",

@@ -17,16 +17,10 @@
 						<h1>Timezone</h1>
 					</header>
 					<div>
-						<h2>Current timezone is:</h2>
-						<section id="">
-							<div class="ape"><span>Asia/Singapore (UTC+08:00)</span></div>
-						</section>
-					</div>
-					<div>
-						<h2>Select Timezone</h2>
+						<h2>Current Timezone is:</h2>
 						<section id="">
 							<div class="ape tctr">
-									<select id="timezone-select"></select>
+									<select id="timezone-select" onchange=""></select>
 							</div>
 						</section>
 					</div>
@@ -35,11 +29,7 @@
 					<header>
 						<h1>Backlight Color</h1>
 					</header>
-					<div id="color-picker-container" style="display:flex;justify-content:center;align-items:center;"></div>
-					<script>
-						var colorPicker = new iro.ColorPicker('#color-picker-container');
-						colorPicker.on("color:change", colorChangeCallback);
-					</script>
+					<div id="color-picker-container"></div>
                 </div>
                 <div id="sleepmode">
                     <header>

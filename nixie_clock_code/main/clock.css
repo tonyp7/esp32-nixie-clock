@@ -1,6 +1,15 @@
 #color-picker-container{
 	margin:0 auto;
-	width:300px;
+    width:300px;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    padding-top:10px;
+    padding-bottom:10px;
+}
+
+#color-picker, #sleepmode{
+    margin-top:30px;
 }
 
 select {
@@ -94,6 +103,7 @@ p {
 }
 header {
     background-color: #fff;
+    border-top: 2px outset #888;
     border-bottom: 1px solid #888;
 }
 section {
