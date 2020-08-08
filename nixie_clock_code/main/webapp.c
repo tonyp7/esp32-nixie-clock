@@ -37,8 +37,9 @@ Contains page logic handling web app functionalities
 #include <http_app.h>
 
 #include "ws2812.h"
-#include "webapp.h"
+#include "display.h"
 #include "clock.h"
+#include "webapp.h"
 
 
 /**
@@ -76,6 +77,96 @@ const static char http_pragma_no_cache[] = "no-cache";
 const static char TAG[] = "webapp";
 
 
+
+
+
+static cJSON* webapp_get_display_cjson(display_config_t *display){
+
+    cJSON *root = cJSON_CreateObject();
+
+    cJSON *rgb = cJSON_CreateObject();
+    cJSON_AddNumberToObject( rgb, "r", display->led_color.r);
+    cJSON_AddNumberToObject( rgb, "g", display->led_color.g);
+    cJSON_AddNumberToObject( rgb, "b", display->led_color.b);
+    cJSON_AddItemToObject(root, "led_color", rgb);
+
+    return root;
+}
+
+static cJSON* webapp_get_timezone_cjson(timezone_t *timezone){
+
+    /* format as following
+        {
+            "name": "Asia/Singapore"
+        }
+    */
+
+   cJSON *root = cJSON_CreateObject();
+   cJSON_AddStringToObject( root, "name", timezone->name );
+
+   return root;
+}
+
+static cJSON* webapp_get_sleemodes_cjson(sleepmodes_t *sleepmodes){
+
+	/* format as following:
+
+	{
+    "enabled":true,
+    "data":[
+        {"enabled":true,"days":3,"from":50400,"to":50460},
+        {"enabled":false,"days":0,"from":0,"to":0},
+        {"enabled":false,"days":0,"from":0,"to":0},
+        {"enabled":false,"days":0,"from":0,"to":0}
+	}
+	*/
+
+    cJSON *root = cJSON_CreateObject();
+	cJSON *data = cJSON_CreateArray();
+
+	cJSON_AddBoolToObject( root, "enabled", sleepmodes->enable_sleepmode );
+	for(int i=0; i < CLOCK_MAX_SLEEPMODES; i++){
+
+		cJSON *sleepmode = cJSON_CreateObject();
+		cJSON_AddBoolToObject( sleepmode, "enabled", sleepmodes->sleepmode[i].enabled );
+		cJSON_AddNumberToObject( sleepmode, "days", sleepmodes->sleepmode[i].days );
+		cJSON_AddNumberToObject( sleepmode, "from", sleepmodes->sleepmode[i].from );
+		cJSON_AddNumberToObject( sleepmode, "to", sleepmodes->sleepmode[i].to );
+
+		cJSON_AddItemToArray( data, sleepmode);
+	}
+	cJSON_AddItemToObject(root, "data", data);
+
+    return root;
+}
+
+static cJSON* webapp_get_config_cjson(clock_config_t *config){
+
+    cJSON *root = cJSON_CreateObject();
+
+    cJSON *timezone = webapp_get_timezone_cjson(  &((*config).timezone) );
+    cJSON *sleepmodes = webapp_get_sleemodes_cjson(  &((*config).sleepmodes) );
+    cJSON *display = webapp_get_display_cjson(  &((*config).display) );
+
+
+    cJSON_AddItemToObject(root, "timezone", timezone);
+    cJSON_AddItemToObject(root, "sleepmodes", sleepmodes);
+    cJSON_AddItemToObject(root, "display", display);
+
+    return root;
+}
+
+/**
+ * @brief transforms a clock_config_t struct into its json string representation
+ */
+static char* webapp_get_config_json(clock_config_t config){
+
+    cJSON *conf = webapp_get_config_cjson( &config );
+    char* str_json = cJSON_Print(conf);
+    cJSON_Delete(conf);
+
+    return str_json;
+}
 
 /**
  * @brief transform a sleepmodes_t struct into its json string representation
@@ -163,6 +254,28 @@ static esp_err_t webapp_get_hander(httpd_req_t *req){
         httpd_resp_set_hdr(req, http_pragma_hdr, http_pragma_no_cache);
         httpd_resp_send(req, conf.timezone.name, strlen( conf.timezone.name ));
         
+    }
+    else if(strcmp(req->uri, "/config/") == 0){
+
+        char* str_json = webapp_get_config_json( clock_get_config() );
+
+        if(str_json){
+
+            httpd_resp_set_status(req, http_200_hdr);
+            httpd_resp_set_type(req, http_content_type_json);
+            httpd_resp_set_hdr(req, http_cache_control_hdr, http_cache_control_no_cache);
+            httpd_resp_set_hdr(req, http_pragma_hdr, http_pragma_no_cache);
+            httpd_resp_send(req, str_json, strlen(str_json));
+
+            free(str_json);
+
+            return ESP_OK;
+        }
+        else{
+            httpd_resp_send_500(req);
+            return ESP_FAIL;
+        }
+
     }
     else if(strcmp(req->uri, "/sleepmode/") == 0){
 
