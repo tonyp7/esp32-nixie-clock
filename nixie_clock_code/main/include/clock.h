@@ -46,7 +46,11 @@ apply offset manually to the timestamp.
 #include <esp_err.h> /* for esp_err_t */
 #include "freertos/FreeRTOS.h" /* TickType_t */
 #include "cJSON.h" /* for cJSON */
+#include "display.h" /* display_config_t */
 
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 /** @brief Defines the task priority of the clock (main task).
  *  This should be the highest priority task unless very specific reason. Default: 10.
@@ -196,5 +200,9 @@ esp_err_t clock_get_nvs_timezone(timezone_t *tz);
 
 bool clock_realign(time_t new_t);
 
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* MAIN_CLOCK_H_ */

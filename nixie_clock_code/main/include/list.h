@@ -33,6 +33,10 @@ SOFTWARE.
 
 #include "clock.h" /* for sleep_event_t */
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #define LIST_DATA_TYPE sleep_event_t
 
 struct node_t {
@@ -93,5 +97,9 @@ int list_pop(list_t* list, LIST_DATA_TYPE * data);
  */
 int list_peek(list_t* list, LIST_DATA_TYPE * data);
 
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

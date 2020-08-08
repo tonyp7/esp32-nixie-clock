@@ -29,6 +29,13 @@ Contains helper functions to communicate over the I2C bus
 #ifndef MAIN_I2C_H_
 #define MAIN_I2C_H_
 
+#include <esp_err.h>
+#include <stdint.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 
 #define I2C_MASTER_SCL_IO					22               /*!< gpio number for I2C master clock */
 #define I2C_MASTER_SDA_IO					21               /*!< gpio number for I2C master data  */
@@ -75,5 +82,9 @@ esp_err_t i2c_read_bytes(const uint8_t slave_address, const uint8_t register_add
 
 
 esp_err_t i2c_write_bytes(const uint8_t slave_address, const uint8_t register_address, uint8_t *data, size_t data_len);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* MAIN_I2C_H_ */

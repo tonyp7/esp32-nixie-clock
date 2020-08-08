@@ -26,11 +26,16 @@ Contains functions to control the nixie clock display over SPI
 
 */
 
+
 #ifndef MAIN_DISPLAY_H_
 #define MAIN_DISPLAY_H_
 
-#include "time.h"
+#include <time.h>
 #include "ws2812.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 #define	DISPLAY_SPI_CS_GPIO				15
 #define DISPLAY_SPI_MOSI_GPIO			13
@@ -77,5 +82,8 @@ void display_turn_on();
 void display_turn_off();
 
 
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* MAIN_DISPLAY_H_ */

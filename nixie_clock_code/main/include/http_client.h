@@ -25,8 +25,18 @@ SOFTWARE.
 Contains wrappers around the esp http client for the mclk.org time API.
 
 */
+
+
 #ifndef MAIN_INCLUDE_HTTP_CLIENT_H_
 #define MAIN_INCLUDE_HTTP_CLIENT_H_
+
+#include <esp_http_client.h> /* esp_http_client_handle_t */
+#include "time.h" /* time_t */
+#include "clock.h" /* timezone_t */
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 #define HTTP_CLIENT_MAX_REQUEST_SIZE	256
 
@@ -36,6 +46,11 @@ void http_client_get_api_time(char* timezone);
 void http_client_get_transitions(timezone_t timezone, time_t now);
 void http_rest();
 //void http_client_task(void *pvParameter);
+
+
+#ifdef __cplusplus
+}
+#endif
 
 
 #endif /* MAIN_INCLUDE_HTTP_CLIENT_H_ */

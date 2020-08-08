@@ -35,6 +35,12 @@ This is based of FozzTexx's public domain code on WS2812
 #define MAIN_WS2812_H_
 
 #include <stdint.h>
+#include <esp_err.h>
+
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 #define WS2818_DATA_GPIO		23
 #define WS2812_STRIP_SIZE		6
@@ -93,6 +99,8 @@ inline esp_err_t ws2812_set_backlight_color_rgb(uint8_t r, uint8_t g, uint8_t b)
 void ws2812_set_colors(unsigned int length, rgb_t *array);
 
 
-
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* MAIN_WS2812_H_ */

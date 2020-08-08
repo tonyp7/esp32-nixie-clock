@@ -29,8 +29,16 @@ Contains page logic handling web app functionalities
 #ifndef CLOCK_WEBAPP_H_
 #define CLOCK_WEBAPP_H_
 
-#include "esp_err.h"
+#include <esp_err.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 esp_err_t webapp_register_handlers();
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

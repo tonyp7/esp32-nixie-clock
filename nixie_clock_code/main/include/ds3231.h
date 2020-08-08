@@ -31,6 +31,13 @@ SOFTWARE.
 #ifndef MAIN_DS3231_H_
 #define MAIN_DS3231_H_
 
+#include <esp_err.h>
+#include <stdint.h>
+#include <time.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 #define DS3231_ADDR						   	0x68
 
@@ -65,6 +72,11 @@ esp_err_t ds3231_get_time(struct tm *timeinfo);
 esp_err_t ds3231_set_time(const struct tm *timeinfo);
 uint8_t ds3231_bcd2dec (uint8_t val);
 uint8_t ds3231_dec2bcd (uint8_t val);
+
+
+#ifdef __cplusplus
+}
+#endif
 
 
 #endif /* MAIN_DS3231_H_ */
