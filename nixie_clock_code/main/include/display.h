@@ -73,6 +73,8 @@ esp_err_t display_write_time(struct tm *time);
 uint16_t* display_get_vram();
 esp_err_t display_write_vram();
 esp_err_t display_register_usb_power_interrupt();
+void display_turn_on();
+void display_turn_off();
 
 
 

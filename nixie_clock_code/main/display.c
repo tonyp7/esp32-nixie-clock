@@ -54,6 +54,20 @@ static void IRAM_ATTR gpio_usb_power_isr_handler(void* arg){
 }
 
 
+void display_turn_on(){
+	/* turn on does not do anything if USB power is connected */
+	if(gpio_get_level(DEBUG_USB_POWER_ON_GPIO) == 0){
+		gpio_set_level(DISPLAY_HVEN_GPIO, 1);
+		gpio_set_level(DISPLAY_OE_GPIO, 0);
+	}
+}
+
+void display_turn_off(){
+	gpio_set_level(DISPLAY_OE_GPIO, 1);
+	gpio_set_level(DISPLAY_HVEN_GPIO, 0);
+}
+
+
 esp_err_t display_register_usb_power_interrupt(){
 
 	/* setup DEBUG_USB_POWER_ON_GPIO as INTERRUPT on RISING EGDE */
@@ -93,8 +107,8 @@ esp_err_t display_init(){
 	gpio_set_level(DISPLAY_HVEN_GPIO, 1);
 
 	/* register interrupt on USB power */
-	ret = display_register_usb_power_interrupt();
-	if(ret != ESP_OK) return ret;
+	//ret = display_register_usb_power_interrupt();
+	//if(ret != ESP_OK) return ret;
 
 	spi_bus_config_t buscfg={
 		.miso_io_num=-1, /* -1 == not used */
