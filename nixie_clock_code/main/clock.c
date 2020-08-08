@@ -188,6 +188,14 @@ static void clock_build_new_sleepmodes(sleepmodes_t sleepmodes){
 					list_add_ordered(clock_list_sleepevents, from, &comp_sleep_event);
 					list_add_ordered(clock_list_sleepevents, to, &comp_sleep_event);
 
+					/* if the day is today we also build the sleep event for next week */
+					if(day_offset == 0){
+						from.timestamp += (time_t)86400*7;
+						to.timestamp += (time_t)86400*7;
+						list_add_ordered(clock_list_sleepevents, from, &comp_sleep_event);
+						list_add_ordered(clock_list_sleepevents, to, &comp_sleep_event);
+					}
+
 					/* debug -- can be deleted in production code */
 					struct tm debug;
 					static char strftime_buf[64];
@@ -206,13 +214,6 @@ static void clock_build_new_sleepmodes(sleepmodes_t sleepmodes){
 
             } /* for (int j = 0; j < 7; j++) */
         } /* for (int i = 0; i < CLOCK_MAX_SLEEPMODES; i++) */
-
-		/* remove the sleep events that are in the past, get the last one and note if it should sleep or wake */
-		if(clock_list_sleepevents->count != 0){
-			
-		}
-
-
     } /* if (sleepmodes.enable_sleepmode) */
 }
 
@@ -345,12 +346,17 @@ void clock_tick(){
 	timestamp_local = timestamp_utc + clock_timezone->offset;
 
 	/* check for sleep / wake event */
-	sleep_event_t sleep_event;
-	memset(&sleep_event, 0x00, sizeof(sleep_event_t));
-	while(  (list_peek(clock_list_sleepevents, &sleep_event) == 0) &&  ( sleep_event.timestamp <= timestamp_local )  ){
+	bool process_sleep_event = false;
+	sleep_event_t sleep_event = {
+		.action = SLEEP_ACTION_UNKNOWN,
+		.timestamp = 0x7fffffff
+	};
+	while(  (list_peek(clock_list_sleepevents, &sleep_event) == 0) &&  ( timestamp_local >= sleep_event.timestamp )  ){
 		list_shift(clock_list_sleepevents, NULL);
+		process_sleep_event = true;
 	}
-	if(sleep_event.action != SLEEP_ACTION_UNKNOWN){
+	if(process_sleep_event){
+
 		clock_queue_message_t msg;
 		msg.message = CLOCK_MESSAGE_SLEEP_EVENT;
 		msg.param = (void*)sleep_event.action;
