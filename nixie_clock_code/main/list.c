@@ -160,7 +160,11 @@ int list_shift(list_t* list, LIST_DATA_TYPE * data)
 		free(first);
 		list->count--;
 
-        *data = shift_data;
+		/* NULL can be passed as data. In that case value isn't sent back to caller */
+		if(data){
+			*data = shift_data;
+		}
+        
         return 0;
 	}
 	else {
