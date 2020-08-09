@@ -105,9 +105,14 @@ static void clock_save_config_task(void *pvParameter){
 	ESP_LOGI(TAG, "clock_save_config_task started");
 	for(;;){
 
-		if(ulTaskNotifyTake(pdFALSE, portMAX_DELAY)){
+		if(ulTaskNotifyTake(pdTRUE, portMAX_DELAY)){
 
-			ESP_LOGI(TAG, "clock_save_config_task received notification");
+			/* this prevent saving the config more than once per 10s
+			 * While this means some data could be lost, in a typical user use it is a lot better
+			 * to do this rather than saving EVERYTIME there's small change, most notably
+			 * with the RGB change which can happen extremely quickly
+			 */
+			vTaskDelay(  pdMS_TO_TICKS(10000) );
 
 			clock_config_t cfg = clock_get_config();
 			if(clock_nvs_lock( portMAX_DELAY )){
@@ -219,9 +224,12 @@ static void clock_build_new_sleepmodes(sleepmodes_t sleepmodes){
 }
 
 
-timezone_t clock_get_current_timezone(){
-	//return clock_timezone;
+timezone_t clock_get_config_timezone(){
 	return clock_config.timezone;
+}
+
+display_config_t clock_get_config_display(){
+	return clock_config.display;
 }
 
 void clock_notify_sta_got_ip(void *pvArgument){
@@ -229,9 +237,18 @@ void clock_notify_sta_got_ip(void *pvArgument){
 		clock_queue_message_t msg;
 		msg.message = CLOCK_MESSAGE_STA_GOT_IP;
 		xQueueSend(clock_queue, &msg, portMAX_DELAY);
-		//xQueueSendFromISR(clock_queue, &message, NULL);
 	}
 }
+
+void clock_notify_new_backlight_color(rgb_t rgb){
+	if(clock_queue){
+		clock_queue_message_t msg;
+		msg.message = CLOCK_MESSAGE_BACKLIGHTS_CONFIG;
+		msg.param = (void*)rgb.num;
+		xQueueSend(clock_queue, &msg, portMAX_DELAY);
+	}
+}
+
 void clock_notify_sta_disconnected(){
 	if(clock_queue){
 		clock_queue_message_t msg;
@@ -632,6 +649,10 @@ void clock_task(void *pvParameter){
 	clock_list_sleepevents = list_create();
 	clock_notify_new_sleepmodes(clock_config.sleepmodes);
 
+	/* initialize the display */
+	display_turn_on();
+	ws2812_set_backlight_color(clock_config.display.led_color);
+
 	/* register interrupt on the 1Hz sqw signal coming from the DS3231 */
 	ESP_ERROR_CHECK(clock_register_sqw_interrupt());
 
@@ -784,13 +805,25 @@ void clock_task(void *pvParameter){
 					sleep_action_t a = (sleep_action_t)msg.param;
 					if(a == SLEEP_ACTION_WAKE){
 						display_turn_on();
+						ws2812_set_backlight_color(clock_config.display.led_color);
 					}
 					else if(a == SLEEP_ACTION_SLEEP){
 						display_turn_off();
+						ws2812_set_backlight_color_rgb( (uint8_t)0, (uint8_t)0, (uint8_t)0);
 					}
 
 					}
 					break;
+				case CLOCK_MESSAGE_BACKLIGHTS_CONFIG:{
+					;rgb_t rgb;
+					rgb.num = (uint32_t)msg.param;
+					if(clock_config.display.led_color.num != rgb.num){
+						clock_config.display.led_color = rgb;
+						xTaskNotifyGive( clock_task_save_nvs );
+					}
+					}
+					break;
+
 				default:
 					ESP_LOGE(TAG, "Unknown task message received: %d", msg.message);
 					break;
