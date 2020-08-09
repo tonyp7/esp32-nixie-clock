@@ -203,7 +203,7 @@ static void http_client_api_time_process(char *timezone){
 
 
 static void http_client_api_transitions_process(void *pvParameter){
-	timezone_t timezone = clock_get_current_timezone();
+	timezone_t timezone = clock_get_config_timezone();
 	time_t now = clock_get_current_time_utc();
 
 	esp_http_client_config_t config = {

@@ -90,6 +90,7 @@ typedef enum clock_message_t{
 	CLOCK_MESSAGE_SLEEPMODE_CONFIG = 8,
 	CLOCK_MESSAGE_TIMEZONE = 9,
 	CLOCK_MESSAGE_SLEEP_EVENT = 10,
+	CLOCK_MESSAGE_BACKLIGHTS_CONFIG = 11,
 	CLOCK_MESSAGE_MAX = 0x7fffffff
 }clock_message_t;
 
@@ -154,6 +155,7 @@ void clock_notify_new_timezone(char* timezone);
 void clock_notify_new_sleepmodes(sleepmodes_t sleepmodes);
 void clock_notify_sta_got_ip(void* pvArgument);
 void clock_notify_sta_disconnected();
+void clock_notify_new_backlight_color(rgb_t rgb);
 void clock_notify_time_api_response(cJSON *json);
 void clock_notify_transitions_api_response(cJSON *json);
 void clock_tick();
@@ -161,7 +163,7 @@ void clock_task(void *pvParameter);
 esp_err_t clock_register_sqw_interrupt();
 
 time_t clock_get_current_time_utc();
-timezone_t clock_get_current_timezone();
+
 
 
 /**
@@ -170,7 +172,26 @@ timezone_t clock_get_current_timezone();
 esp_err_t clock_save_config(clock_config_t *conf);
 
 
+/**
+ * @brief retrieves the entire clock configuration 
+ */
 clock_config_t clock_get_config();
+
+/**
+ * @brief retrieves only the timezone_t component of the clock configuration
+ * This function is helpful if only a portion of the config is needed and dumping
+ * the entire configuration on the stack would be wasteful.
+ * @see clock_get_config
+ */
+timezone_t clock_get_config_timezone();
+
+/**
+ * @brief retrieves only the display_config_t component of the clock configuration
+ * This function is helpful if only a portion of the config is needed and dumping
+ * the entire configuration on the stack would be wasteful.
+ * @see clock_get_config
+ */
+display_config_t clock_get_config_display();
 
 
 
