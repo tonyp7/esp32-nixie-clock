@@ -554,6 +554,7 @@ static esp_err_t webapp_post_handler(httpd_req_t *req){
             cJSON_Delete(json);
 
             ret = ws2812_set_backlight_color(rgb);
+            clock_notify_new_backlight_color(rgb);
             if(ret == ESP_OK){
 
                 httpd_resp_set_status(req, http_200_hdr);
