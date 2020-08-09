@@ -198,7 +198,15 @@ esp_err_t display_write_time(struct tm *time){
 		return display_write_vram();
 	}
 	else{
-		return ESP_ERR_INVALID_ARG;
+
+		display_vram[0] = (uint16_t) (1 << 0);
+		display_vram[1] = (uint16_t) (1 << 0);
+		display_vram[2] = (uint16_t) (1 << 0);
+		display_vram[3] = (uint16_t) (1 << 0);
+		display_vram[4] = (uint16_t) (1 << 0);
+		display_vram[5] = (uint16_t) (1 << 0);
+
+		return display_write_vram();
 	}
 
 
