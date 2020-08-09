@@ -30,12 +30,11 @@ Contains functions to control the nixie clock display over SPI
 #include <string.h>
 #include <byteswap.h>
 
-#include "esp_err.h"
-#include "driver/gpio.h"
-#include "driver/spi_master.h"
-#include "driver/gpio.h"
-#include "esp_intr_alloc.h"
-
+#include <esp_err.h>
+#include <driver/gpio.h>
+#include <driver/spi_master.h>
+#include <driver/gpio.h>
+#include <esp_intr_alloc.h>
 
 #include "display.h"
 
