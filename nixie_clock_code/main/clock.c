@@ -650,6 +650,7 @@ void clock_task(void *pvParameter){
 	clock_notify_new_sleepmodes(clock_config.sleepmodes);
 
 	/* initialize the display */
+	display_set_config(  &(clock_config.display)  );
 	display_write_time(NULL); /* write 00:00:00 on display */
 	display_turn_on();
 	ws2812_set_backlight_color(clock_config.display.led_color);

@@ -31,6 +31,7 @@ Contains functions to control the nixie clock display over SPI
 #define MAIN_DISPLAY_H_
 
 #include <time.h>
+#include <stdbool.h>
 #include "ws2812.h"
 
 #ifdef __cplusplus
@@ -69,6 +70,7 @@ typedef enum display_dot_mode_t{
 typedef struct display_config_t{
 	display_dot_mode_t dot_mode;
 	display_leading_zero_t leading_zero;
+	bool twelve_hours_format;
 	float led_brightness;
 	rgb_t led_color;
 }display_config_t;
@@ -78,6 +80,13 @@ esp_err_t display_write_time(struct tm *time);
 uint16_t* display_get_vram();
 esp_err_t display_write_vram();
 esp_err_t display_register_usb_power_interrupt();
+
+/**
+ * @brief set the clock display configuration that will be used while displaying the time
+ * @see display_write_time
+ */
+void display_set_config(display_config_t* config);
+
 void display_turn_on();
 void display_turn_off();
 

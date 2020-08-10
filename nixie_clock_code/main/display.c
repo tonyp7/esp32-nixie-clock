@@ -42,6 +42,7 @@ Contains functions to control the nixie clock display over SPI
 static uint16_t *display_vram;
 static spi_device_handle_t spi;
 static spi_transaction_t t;
+static display_config_t display_config;
 
 
 
@@ -94,6 +95,8 @@ esp_err_t display_init(){
 
 	display_vram = (uint16_t*)malloc(sizeof(uint16_t) * DISPLAY_DIGIT_COUNT);
 	memset(display_vram, 0x00, sizeof(uint16_t) * DISPLAY_DIGIT_COUNT);
+
+	memset(&display_config, 0x00, sizeof(display_config_t));
 
 	/* setup all GPIOs */
 	gpio_set_direction(DISPLAY_SPI_CS_GPIO, GPIO_MODE_OUTPUT);
@@ -148,6 +151,10 @@ uint16_t* display_get_vram(){
 	return display_vram;
 }
 
+void display_set_config(display_config_t* config){
+	display_config = *config;
+}
+
 esp_err_t display_write_vram(){
 	esp_err_t ret;
 
@@ -183,8 +190,28 @@ esp_err_t display_write_time(struct tm *time){
 		display_vram[3] =  (uint16_t) (1 << (time->tm_min / 10));
 
 		/* hours */
-		display_vram[4] =  (uint16_t) (1 << (time->tm_hour % 10));
-		display_vram[5] =  (uint16_t) (1 << (time->tm_hour / 10));
+		int hours = time->tm_hour;
+		if(display_config.twelve_hours_format){
+
+			if(hours > 12){
+				hours -= 12;
+			}
+			else if(hours == 0){ /* in the complete BS that is the 12 hours format, midnight is 12 */
+				hours = 12; 
+			}
+			
+		}
+		display_vram[4] =  (uint16_t) (1 << (hours % 10));
+
+
+		int hours_tens = hours / 10;
+		if(hours_tens == 0 && display_config.leading_zero == DISPLAY_LEADING_ZERO_HIDE){
+			display_vram[5] =  (uint16_t) 0;
+		}
+		else{
+			display_vram[5] =  (uint16_t) (1 << hours_tens);
+		}
+		
 
 
 		if(time->tm_sec % 2 == 0){
