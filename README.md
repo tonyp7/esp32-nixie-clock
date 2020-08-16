@@ -38,6 +38,9 @@ The nixie clock is powered by a LT3757 controller and a big 1:10 transformer. Th
 
 # Photos
 
+### Clock in its environment
+![Nixie Clock](https://raw.githubusercontent.com/tonyp7/esp32-nixie-clock/master/pictures/nixie-clock-coffee-table-1024.jpg)
+
 ### The clock face PCB
 ![Clock face PCB](https://raw.githubusercontent.com/tonyp7/esp32-nixie-clock/master/pictures/clock-face-assembled-1024.jpg)
 
