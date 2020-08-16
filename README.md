@@ -9,9 +9,15 @@ A smart nixie clock capable of automatically setting time and adjusting for time
 **Smart**
 
   - Time is set automatically through a web API
-  - A webapp is provided to adjust wifi settings, timezone and backlights
+  - A webapp is provided to adjust wifi settings, timezone, backlights and display sleeping times
   
 The wifi settings are managed by [esp32-wifi-manager](https://github.com/tonyp7/esp32-wifi-manager).
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/tonyp7/esp32-nixie-clock/master/pictures/webapp-screenshot-small-1.png">
+  <img src="https://raw.githubusercontent.com/tonyp7/esp32-nixie-clock/master/pictures/webapp-screenshot-small-2.png">
+  <img src="https://raw.githubusercontent.com/tonyp7/esp32-nixie-clock/master/pictures/webapp-screenshot-small-3.png">
+</p>
 
 **A modern dispay driver**
 
